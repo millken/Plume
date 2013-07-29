@@ -1,7 +1,8 @@
 Plume
 =====
 
-Plume is a server side framework and now just support linux.
+A high performace HTTP cache-proxy server which support multiple thread and plugin programming.
+Also Plume is a server side framework and now just support linux.
 We can develop specific plugin to accomplish specific business.
 Plume contians a simple echo plugin as default. We can use it like this:
 

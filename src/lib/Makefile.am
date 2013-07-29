@@ -1,0 +1,7 @@
+AUTOMAKE_OPTIONS=foreign
+lib_LTLIBRARIES=libplm_util.la
+libplm_util_la_SOURCES=plm_buffer.c plm_lookaside_list.c plm_mempool.c \
+	plm_sync_mech.c plm_string.c plm_log.c plm_comm.c plm_threads.c \
+	plm_http_proto.c plm_event.c plm_epoll.c
+libplm_util_la_LDFLAGS=-lpthread
+

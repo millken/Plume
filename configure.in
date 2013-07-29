@@ -1,0 +1,32 @@
+#                                               -*- Autoconf -*-
+# Process this file with autoconf to produce a configure script.
+
+AC_PREREQ([2.68])
+AC_INIT([Plume], [0.02], [yykxx@hotmail.com])
+AC_CONFIG_SRCDIR([src/lib/plm_mempool.c])
+# AC_CONFIG_HEADERS([config.h])
+AM_INIT_AUTOMAKE
+AC_PREFIX_DEFAULT(/usr/local/plume)
+
+# Checks for programs.
+${CFLAGS="-g"}
+AC_PROG_CC
+# AC_PROG_RANLIB
+AC_PROG_LIBTOOL
+
+# Checks for libraries.
+
+# Checks for header files.
+AC_CHECK_HEADERS([arpa/inet.h fcntl.h netinet/in.h stddef.h stdlib.h string.h sys/socket.h syslog.h unistd.h])
+
+# Checks for typedefs, structures, and compiler characteristics.
+AC_TYPE_SIZE_T
+
+# Checks for library functions.
+AC_FUNC_MALLOC
+AC_CHECK_FUNCS([localtime_r memset socket strchr])
+
+AC_OUTPUT(Makefile src/Makefile src/base/Makefile src/lib/Makefile 
+				   src/plugin/Makefile)
+
+AC_OUTPUT

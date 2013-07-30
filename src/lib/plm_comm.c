@@ -31,71 +31,37 @@
 #include <errno.h>
 
 struct plm_comm_fd {
-	void *cf_data;
-	void (*cf_handler)(void *);
-	char cf_type;
+	struct plm_comm_close_handler *cf_handler;
 	struct {
+		unsigned char cf_type:3;
 		unsigned char cf_open:1;
 		unsigned char cf_close:1;
 		unsigned char cf_associate:1;
 	};
 };
 
-struct plm_comm_fd_array {
-	int cfa_thread_safe;
-	plm_lock_t cfa_lock;
+static struct plm_comm_fd *commfd_array;
 
-	struct {
-		int cfa_inused;
-		int cfa_free;
-		int cfa_type_inused[PLM_COMM_UDP];
-	};
-	
-	int cfa_bufn;
-	struct plm_comm_fd *cfa_buf;
-};
-
-static struct plm_comm_fd_array comm_fd_array;
-static int plm_comm_open_socket(int type, int port, const char *addr,
-								int backlog);
+static int
+plm_comm_open_socket(int type, int port, const char *addr, int backlog);
 
 /* init commom stuff
  * @maxfd -- the max number of fd
  * return 0 on success, else error
  */
-int plm_comm_init(int maxfd, int thread_safe)
+int plm_comm_init(int maxfd)
 {
-	int rc = -1;
-	
-	if ((thread_safe && !plm_lock_init(&comm_fd_array.cfa_lock))
-		|| !thread_safe) {
-		comm_fd_array.cfa_buf = (struct plm_comm_fd *)
-			malloc(maxfd * sizeof(struct plm_comm_fd));
-		if (comm_fd_array.cfa_buf) {
-			comm_fd_array.cfa_free = maxfd;
-			rc = 0;
-		}
-		comm_fd_array.cfa_thread_safe = thread_safe;
-	}
-
-	return (rc);
+	size_t sz = sizeof(struct plm_comm_fd);
+	commfd_array = (struct plm_comm_fd *)malloc(maxfd * sz);
+	return (commfd_array ? 0 : -1);
 }
 
 /* destroy common stuff */
 void plm_comm_destroy()
 {
-	int thread_safe = comm_fd_array.cfa_thread_safe;
-	
-	if ((thread_safe && !plm_lock_lock(&comm_fd_array.cfa_lock))
-		|| !thread_safe) {
-		if (comm_fd_array.cfa_buf) {
-			free(comm_fd_array.cfa_buf);
-			comm_fd_array.cfa_buf = NULL;
-		}
-		if (thread_safe) {
-			plm_lock_unlock(&comm_fd_array.cfa_lock);
-			plm_lock_destroy(&comm_fd_array.cfa_lock);
-		}
+	if (commfd_array) {
+		free(commfd_array);
+		commfd_array = NULL;
 	}
 }
 
@@ -116,7 +82,6 @@ int plm_comm_open(int type, const char *path, int flags, int mode,
 {
 	int fd = -1;
 	struct plm_comm_fd *commfd;
-	int thread_safe = comm_fd_array.cfa_thread_safe;
 	
 	switch (type) {
 	case PLM_COMM_FILE:
@@ -132,21 +97,11 @@ int plm_comm_open(int type, const char *path, int flags, int mode,
 	if (fd == -1)
 		return (-1);
 
-	if (thread_safe)
-		plm_lock_lock(&comm_fd_array.cfa_lock);
-	
-	comm_fd_array.cfa_inused++;
-	comm_fd_array.cfa_free--;
-	comm_fd_array.cfa_type_inused[type]++;
-
-	commfd = &comm_fd_array.cfa_buf[fd];
+	commfd = &commfd_array[fd];
 	assert(commfd->cf_open == 0);
 	commfd->cf_type = type;
 	commfd->cf_open = 1;
 	commfd->cf_associate = 0;
-
-	if (thread_safe)
-		plm_lock_unlock(&comm_fd_array.cfa_lock);
 
 	if (nonblocking) {
 		int flags = fcntl(fd, F_GETFL, 0);
@@ -164,29 +119,33 @@ int plm_comm_close(int fd)
 {
 	int type;
 	struct plm_comm_fd *commfd = NULL;
-	int thread_safe = comm_fd_array.cfa_thread_safe;
-
-	if (thread_safe)
-		plm_lock_lock(&comm_fd_array.cfa_lock);
 
 	if (!close(fd)) {
-		commfd = &comm_fd_array.cfa_buf[fd];
+		commfd = &commfd_array[fd];
 		assert(commfd->cf_open == 1);
 		type = commfd->cf_type;
 		commfd->cf_open = 0;
 		commfd->cf_associate = 0;
-	
-		comm_fd_array.cfa_inused--;
-		comm_fd_array.cfa_free++;
-		comm_fd_array.cfa_type_inused[type]--;
 		fd = -1;
 	}
 
-	if (thread_safe)
-		plm_lock_unlock(&comm_fd_array.cfa_lock);
+	if (commfd && commfd->cf_handler) {
+		do {
+			struct plm_comm_close_handler *ch;
+			void (*handler)(void *);
+			void *data;
 
-	if (commfd && commfd->cf_handler)
-		commfd->cf_handler(commfd->cf_data);
+			ch = commfd->cf_handler;
+			handler = ch->cch_handler;
+			data = ch->cch_data;
+			ch = ch->cch_next;
+
+			handler(data);
+
+			if (!ch)
+				break;
+		} while (1);
+	}
 
 	return (fd < 0 ? 0 : -1);
 }
@@ -201,9 +160,8 @@ int plm_comm_accept(int fd, struct sockaddr_in *addr, int nonblocking)
 {
 	int cfd;
 	socklen_t addrlen = sizeof(struct sockaddr_in);
-	int thread_safe = comm_fd_array.cfa_thread_safe;
 
-	assert(comm_fd_array.cfa_buf[fd].cf_type == PLM_COMM_TCP);
+	assert(commfd_array[fd].cf_type == PLM_COMM_TCP);
 	cfd = accept(fd, (struct sockaddr *)addr, &addrlen);
 	if (cfd > 0) {
 		int tmp, flags;
@@ -220,19 +178,9 @@ int plm_comm_accept(int fd, struct sockaddr_in *addr, int nonblocking)
 		if (tmp != flags)
 			fcntl(cfd, F_SETFL, flags);
 
-		if (thread_safe)
-			plm_lock_lock(&comm_fd_array.cfa_lock);
-
-		comm_fd_array.cfa_inused++;
-		comm_fd_array.cfa_free--;
-		comm_fd_array.cfa_type_inused[PLM_COMM_TCP]++;
-	
-		assert(comm_fd_array.cfa_buf[cfd].cf_open == 0);
-		comm_fd_array.cfa_buf[cfd].cf_type = PLM_COMM_TCP;
-		comm_fd_array.cfa_buf[cfd].cf_open = 1;
-
-		if (thread_safe)
-			plm_lock_unlock(&comm_fd_array.cfa_lock);
+		assert(commfd_array[cfd].cf_open == 0);
+		commfd_array[cfd].cf_type = PLM_COMM_TCP;
+		commfd_array[cfd].cf_open = 1;
 	}
 
 	return (cfd);
@@ -289,15 +237,13 @@ TRY:
 
 /* register a close handler
  * @fd -- a correct fd
- * @data -- the first argument for handler
- * @handler -- close handler will be invoked
+ * @handler -- close handler
  * return void
  */
-void plm_comm_reg_close_handler(int fd, void *data, void (*handler)(void *))
+void plm_comm_add_close_handler(int fd, struct plm_comm_close_handler *handler)
 {
-	/* no need to lock */
-	comm_fd_array.cfa_buf[fd].cf_data = data;
-	comm_fd_array.cfa_buf[fd].cf_handler = handler;
+	handler->cch_next = commfd_array[fd].cf_handler;
+	commfd_array[fd].cf_handler = handler;
 }
 
 int plm_comm_open_socket(int type, int port, const char *addr, int backlog)
@@ -347,7 +293,7 @@ int plm_comm_open_socket(int type, int port, const char *addr, int backlog)
  */
 void plm_comm_set_flag_added(int fd, char added)
 {
-	comm_fd_array.cfa_buf[fd].cf_associate = added;
+	commfd_array[fd].cf_associate = added;
 }
 
 /* get flag
@@ -356,6 +302,6 @@ void plm_comm_set_flag_added(int fd, char added)
  */
 char plm_comm_get_flag_added(int fd)
 {
-	return (comm_fd_array.cfa_buf[fd].cf_associate);
+	return (commfd_array[fd].cf_associate);
 }
 

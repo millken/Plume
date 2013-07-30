@@ -1,4 +1,4 @@
-/* Copyright (c) 2013 Xingxing Ke <yykxx@hotmail.com>
+/* Copyright (c) 2011-2013 Xingxing Ke <yykxx@hotmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -23,59 +23,14 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _PLM_HTTP_PROTO_H
-#define _PLM_HTTP_PROTO_H
-
-#include "plm_string.h"
-#include "plm_list.h"
+#ifndef _PLM_HTTP_REQUEST_H
+#define _PLM_HTTP_REQUEST_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define PLM_HTTP_PARSE_DONE 0
-#define PLM_HTTP_PARSE_AGAIN 1	
-
-typedef enum {
-	PLM_METHOD_GET,
-	PLM_METHOD_HEAD,
-	PLM_METHOD_POST,
-	PLM_METHOD_PUT,
-	PLM_METHOD_CONNECT,
-	PLM_METHOD_TRACE,
-	PLM_METHOD_END
-} plm_method_t;
-
-typedef enum {
-	PLM_PROTO_HTTP,
-	PLM_PROTO_END
-} plm_proto_t;
-
-struct plm_http_comm {
-	/* only request */
-	plm_method_t hc_method;
-	/* only response */
-	int hc_status;
-	plm_proto_t hc_proto;
-	struct {
-		unsigned char hc_maj_version;
-		unsigned char hc_min_version;
-	};
-
-	/* internal state */
-	int hc_parser_state;
-};
-
-typedef void (*parser_delegate)(const char *, int, struct plm_http_comm *);	
-	
-void plm_http_proto_delegate_set(parser_delegate on_url,
-								 parser_delegate on_key,
-								 parser_delegate on_value);
-
-void plm_http_proto_init(struct plm_http_comm *http);
-	
-int plm_http_proto_parse(int *bytes_parsed, struct plm_http_comm *http,
-						 const char *buf, int n);	
+void plm_http_accept(void *data, int fd);
 
 #ifdef __cplusplus
 }

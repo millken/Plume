@@ -49,11 +49,10 @@ void plm_buffer_init(int thrdsafe, int tagchk, int zeromem)
 }
 
 /* alloc memory buffer 8k, 4k, 2k, 1k
- * @buf -- buffer to hold memory
  * @type -- buffer type
  * return address of buf on success or NULL on error
  */
-struct plm_buffer *plm_buffer_alloc(struct plm_buffer *buf, int type)
+char *plm_buffer_alloc(int type)
 {
 	size_t size = 0;
 
@@ -75,20 +74,13 @@ struct plm_buffer *plm_buffer_alloc(struct plm_buffer *buf, int type)
 		break;
 	}
 	
-	buf->b_data = plm_lookaside_list_alloc(&mem_list[type], NULL);
-	buf->b_size = buf->b_data ? size : 0;
-	return (buf->b_data ? buf : NULL);
+	return plm_lookaside_list_alloc(&mem_list[type], NULL);
 }
 
 /* free memory */
-void plm_buffer_free(int type, struct plm_buffer *buf)
+void plm_buffer_free(int type, char *buf)
 {
-	if (!buf->b_data)
-		return;
-	
-	plm_lookaside_list_free(&mem_list[type], buf->b_data, NULL);
-	buf->b_data = NULL;
-	buf->b_size = 0;
+	plm_lookaside_list_free(&mem_list[type], buf, NULL);
 }
 
 /* destroy pool and free all memory */

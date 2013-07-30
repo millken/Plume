@@ -43,18 +43,17 @@ enum {
 	PLM_COMM_UDP
 };
 
-enum {
-	PLM_ERR_FAILURE = -1,
-	PLM_ERR_WLDBLK = -2,
-	PLM_ERR_NOMSG = -3,
-	PLM_ERR_INPROGRESS = -4
-};
+struct plm_comm_close_handler {
+	struct plm_comm_close_handler *cch_next;
+	void (*cch_handler)(void *);
+	void *cch_data;
+};	
 
 /* init commom stuff
  * @maxfd -- the max number of fd
  * return 0 on success, else error
  */
-int plm_comm_init(int maxfd, int thread_safe);
+int plm_comm_init(int maxfd);
 
 /* destroy common stuff */
 void plm_comm_destroy();	
@@ -112,11 +111,10 @@ int plm_comm_write(int fd, const char *buf, int n);
 
 /* register a close handler
  * @fd -- a correct fd
- * @data -- the first argument for handler
- * @handler -- close handler will be invoked
+ * @handler -- close handler
  * return void
  */
-void plm_comm_reg_close_handler(int fd, void *data, void (*handler)(void *));
+void plm_comm_add_close_handler(int fd, struct plm_comm_close_handler *handler);
 
 /* set flag, added indicate we have add the event on fd
  * @fd -- a correct fd

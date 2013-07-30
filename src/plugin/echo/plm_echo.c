@@ -46,7 +46,7 @@ static struct plm_cmd echo_cmds[] = {
 	{
 		&echo_plugin,
 		plm_string("echo"),
-		CT_BLOCK,
+		PLM_BLOCK,
 		NULL,
 		plm_echo_ctx_create,
 		plm_echo_ctx_destroy
@@ -54,7 +54,7 @@ static struct plm_cmd echo_cmds[] = {
 	{
 		&echo_plugin,
 		plm_string("echo_str"),
-		CT_INSTRUCTION,
+		PLM_INSTRUCTION,
 		plm_echo_str_set,
 		NULL,
 		NULL
@@ -62,7 +62,7 @@ static struct plm_cmd echo_cmds[] = {
 	{
 		&echo_plugin,
 		plm_string("echo_port"),
-		CT_INSTRUCTION,
+		PLM_INSTRUCTION,
 		plm_echo_port_set,
 		NULL,
 		NULL
@@ -70,10 +70,12 @@ static struct plm_cmd echo_cmds[] = {
 	{0}
 };
 
-static int plm_echo_on_work_proc_start(struct plm_ctx_list *ctx);
-static void plm_echo_on_work_proc_exit(struct plm_ctx_list *ctx);
+static void plm_echo_set_main_conf(struct plm_share_param *);
+static int plm_echo_on_work_proc_start(struct plm_ctx_list *);
+static void plm_echo_on_work_proc_exit(struct plm_ctx_list *);
 
 struct plm_plugin echo_plugin = {
+	plm_echo_set_main_conf,
 	plm_echo_on_work_proc_start,
 	plm_echo_on_work_proc_exit,
 	NULL,
@@ -344,15 +346,25 @@ static void plm_echo_accept(void *data, int fd)
 	plm_log_write(PLM_LOG_WARNING, "plm_echo_accept: accept failed");
 }
 
+static struct plm_share_param sp;
+
+void plm_echo_set_main_conf(struct plm_share_param *param)
+{
+	memcpy(&sp, param, sizeof(sp));
+}
+
 int plm_echo_on_work_proc_start(struct plm_ctx_list *cl)
 {
-	int rc, thrdsafe = 1;
+	int rc;
 	struct plm_echo_conf *conf;
 
 	conf = (struct plm_echo_conf *)PLM_CTX_LIST_GET_POINTER(cl);
 
-	plm_lookaside_list_init(&blk_list, 128, sizeof(struct plm_echo_client),
-							0xEFEFABCD, malloc, free);
+	plm_lookaside_list_init(&blk_list, sp.sp_maxfd / 10,
+							sizeof(struct plm_echo_client),
+							sp.sp_tag, malloc, free);
+	plm_lookaside_list_enable(&blk_list, sp.sp_zeromem, sp.sp_tagcheck,
+							  sp.sp_thrdn > 1);
 	echo_server_fd = plm_comm_open(PLM_COMM_TCP, NULL, 0, 0, conf->ec_port,
 								   NULL, 100, 1);
 	if (echo_server_fd < 0) {

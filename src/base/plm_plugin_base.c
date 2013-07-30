@@ -52,7 +52,7 @@ static struct plm_cmd main_cmd[] = {
 	{
 		&main_plugin,
 		plm_string("main"),
-		CT_BLOCK,
+		PLM_BLOCK,
 		NULL,
 		plm_main_ctx_create,
 		plm_main_ctx_destroy
@@ -60,7 +60,7 @@ static struct plm_cmd main_cmd[] = {
 	{
 		&main_plugin,
 		plm_string("work_thread_num"),
-		CT_INSTRUCTION,
+		PLM_INSTRUCTION,
 		plm_work_thread_num_set,
 		NULL,
 		NULL		
@@ -68,7 +68,7 @@ static struct plm_cmd main_cmd[] = {
 	{
 		&main_plugin,
 		plm_string("logpath"),
-		CT_INSTRUCTION,
+		PLM_INSTRUCTION,
 		plm_logpath_set,
 		NULL,
 		NULL
@@ -76,7 +76,7 @@ static struct plm_cmd main_cmd[] = {
 	{
 		&main_plugin,
 		plm_string("load_plugin"),
-		CT_INSTRUCTION,
+		PLM_INSTRUCTION,
 		plm_load_plugin_set,
 		NULL,
 		NULL
@@ -84,7 +84,7 @@ static struct plm_cmd main_cmd[] = {
 	{
 		&main_plugin,
 		plm_string("maxfd"),
-		CT_INSTRUCTION,
+		PLM_INSTRUCTION,
 		plm_maxfd_set,
 		NULL,
 		NULL
@@ -92,7 +92,7 @@ static struct plm_cmd main_cmd[] = {
 	{
 		&main_plugin,
 		plm_string("work_thread_cpu_affinity"),
-		CT_INSTRUCTION,
+		PLM_INSTRUCTION,
 		plm_work_thread_cpu_affinity_set,
 		NULL,
 		NULL
@@ -104,6 +104,7 @@ static int plm_main_on_work_proc_start(struct plm_ctx_list *);
 static void plm_main_on_work_proc_exit(struct plm_ctx_list *);
 
 static struct plm_plugin main_plugin = {
+	NULL,
 	plm_main_on_work_proc_start,
 	plm_main_on_work_proc_exit,
 	NULL,
@@ -116,6 +117,7 @@ struct plm_plugin_node {
 	struct plm_plugin *pn_plg;
 };
 
+static struct plm_share_param sp;
 static plm_dlist_t plugins;
 static struct plm_plugin *core_plg[] = {
 	&main_plugin
@@ -129,6 +131,9 @@ static void plm_plugin_work_proc_init_eachone(void *n, void *data)
 	plg_ctx = (struct plm_ctx_list *)n;
 	rc = (int *)data;
 
+	if (plg_ctx->cl_plg->plg_set_conf)
+		plg_ctx->cl_plg->plg_set_conf(&sp);
+	
 	*rc |= plg_ctx->cl_plg->plg_on_work_proc_start(plg_ctx);
 }
 
@@ -140,8 +145,17 @@ int plm_plugin_init()
 	plm_list_t *list = &main_ctx.mc_ctxs;
 	int thrdn = main_ctx.mc_work_thread_num;
 
+	sp.sp_thrdn = main_ctx.mc_work_thread_num;
+	sp.sp_maxfd = main_ctx.mc_maxfd;
+	sp.sp_tagcheck = main_ctx.mc_tagcheck;
+	sp.sp_zeromem = main_ctx.mc_zeromem;
+	sp.sp_tag = main_ctx.mc_tag;
+
 	/* init core plugins */
 	for (i = 0; i < sizeof(core_plg) / sizeof(core_plg[0]); i++) {
+		if (core_plg[i]->plg_set_conf)
+			core_plg[i]->plg_set_conf(&sp);
+		
 		if (core_plg[i]->plg_on_work_proc_start) {
 			rc = core_plg[i]->plg_on_work_proc_start(NULL);
 			if (rc)
@@ -407,7 +421,7 @@ int plm_main_on_work_proc_start(struct plm_ctx_list *ctx)
 	int thrdsafe = thrdn > 1;
 
 	plm_buffer_init(thrdsafe);
-	if (!plm_comm_init(main_ctx.mc_maxfd, thrdsafe)) {
+	if (!plm_comm_init(main_ctx.mc_maxfd)) {
 		if (!plm_event_io_init(maxfd))
 			return (0);
 

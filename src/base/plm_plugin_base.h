@@ -38,13 +38,17 @@ struct plm_main_ctx {
 	plm_string_t mc_log_path;
 
 	/* log level */
-	int mc_log_level;
+	int8_t mc_log_level;
 
 	/* thread number per work process */
 	int mc_work_thread_num;
 
 	/* max file descriptor number */
 	int mc_maxfd;
+
+	uint8_t mc_zeromem : 1;
+	uint8_t mc_tagcheck : 1;
+	unsigned int mc_tag;
 
 	/* array of cpu id if set by work_thread_cpu_affinity */
 	uint64_t *mc_cpu_affinity_id;

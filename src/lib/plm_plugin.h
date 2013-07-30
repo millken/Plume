@@ -26,6 +26,8 @@
 #ifndef _PLM_PLUGIN_H
 #define _PLM_PLUGIN_H
 
+#include <stdint.h>
+
 #include "plm_string.h"
 #include "plm_list.h"
 #include "plm_dlist.h"
@@ -39,8 +41,8 @@ extern "C" {
 struct plm_plugin;
 
 typedef enum {
-	CT_BLOCK,
-	CT_INSTRUCTION,
+	PLM_BLOCK,
+	PLM_INSTRUCTION,
 } plm_cmd_type_t;
 
 /* all parameter of directive */	
@@ -67,7 +69,16 @@ struct plm_ctx_list {
 	struct plm_plugin *cl_plg;
 };	
 
-#define PLM_CTX_LIST_GET_POINTER(ctx) ((ctx)->cl_data.c_data)
+#define PLM_CTX_LIST_GET_POINTER(cl) ((cl)->cl_data.c_data)
+#define PLM_CTX_LIST_GET_SUBLIST(cl) (&(cl)->cl_list)
+
+struct plm_share_param {
+	int sp_maxfd;
+	int sp_thrdn;
+	unsigned int sp_tag;	
+	uint8_t sp_tagcheck : 1;
+	uint8_t sp_zeromem : 1;
+};
 	
 /* directive structure */	
 struct plm_cmd {
@@ -94,6 +105,9 @@ struct plm_cmd {
 
 /* plugin structure */	
 struct plm_plugin {
+	/* set the main block configure */
+	void (*plg_set_conf)(struct plm_share_param *);
+	
 	/* called when work process start */
 	int (*plg_on_work_proc_start)(struct plm_ctx_list *);
 

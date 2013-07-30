@@ -423,7 +423,7 @@ static int plm_conf_cmd_line_push(void **ctx, struct plm_cmd_line *cl,
 				return (-1);
 			}
 
-			if (cmd->c_type == CT_BLOCK) {
+			if (cmd->c_type == PLM_BLOCK) {
 				void *parent = *ctx;
 				*ctx = cmd->c_create_ctx(*ctx);
 				plm_ctx_register(cmd->c_plg, parent, *ctx, cmd->c_destroy_ctx);

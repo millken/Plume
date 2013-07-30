@@ -45,24 +45,17 @@ enum {
 	SIZE_1K = 1024,
 };
 
-struct plm_buffer {
-	void *b_data;
-	int b_size;
-	int b_len;
-};
-
 /* init buffers */
 void plm_buffer_init(int thrdsafe, int tagchk, int zeromem);
 
 /* alloc memory buffer 8k, 4k, 2k, 1k
- * @buf -- buffer to hold memory
  * @type -- buffer type
  * return address of buf on success or NULL on error
  */
-struct plm_buffer *plm_buffer_alloc(struct plm_buffer *buf, int type);
+char *plm_buffer_alloc(int type);
 
 /* free memory */
-void plm_buffer_free(int type, struct plm_buffer *buf);
+void plm_buffer_free(int type, char *buf);
 
 /* destroy pool and free all memory */
 void plm_buffer_destroy();

@@ -25,15 +25,24 @@
 
 #include "plm_http_proto.h"
 
-int plm_http_proto_request_parse(struct plm_http_request_line *req,
-								 char *buf, int bufsize)
+parser_delegate parser_on_url;
+parser_delegate parser_on_key;
+parser_delegate parser_on_value;
+
+void plm_http_proto_delegate_set(parser_delegate on_url,
+								 parser_delegate on_key,
+								 parser_delegate on_value)
 {
-	return (0);
+	parser_on_url = on_url;
+	parser_on_key = on_key;
+	parser_on_value = on_value;
 }
 
-int plm_http_proto_header_parse(struct plm_http_header *header,
-								char *buf, int size)
+void plm_http_proto_init(struct plm_http_comm *http)
 {
-	return (0);
 }
-
+	
+int plm_http_proto_parse(int *bytes_parsed, struct plm_http_comm *http,
+						 const char *buf, int n)
+{
+}

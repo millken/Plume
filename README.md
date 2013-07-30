@@ -50,7 +50,7 @@ Plume configure file support variable. Every variable begins with $. Like:
 How to build:
 
     $ cd plume
-    $ chmod +x ./configure
+    $ autoreconf -if
     $ ./configure
     $ make
     $ sudo make install
@@ -106,3 +106,5 @@ Other instruction support now:
     for example: 
     work_thread_num 2
     work_thread_cpu_affinity 01 10
+
+Thanks for testing and bug report(yykxx@hotmail.com).

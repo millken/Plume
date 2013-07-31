@@ -44,14 +44,9 @@ enum {
 	PLM_DISP_SHUTDOWN,
 };
 
-struct plm_disp_global {
-	plm_lock_t dg_lock;
-	volatile int dg_status;
-};
-
-static struct plm_disp_global dg;
-static int thrdn;
-static int timeout;
+static plm_lock_t disp_lock;
+static volatile int disp_status;
+static int disp_thrdn;
 
 pid_t gettid()
 {
@@ -63,21 +58,20 @@ pid_t gettid()
  */
 int plm_disp_start()
 {
-	thrdn = main_ctx.mc_work_thread_num;
-	timeout = main_ctx.mc_poll_timeout;
+	disp_thrdn = main_ctx.mc_work_thread_num;
 	
-	if (thrdn > 1) {
-		if (plm_lock_init(&dg.dg_lock))
+	if (disp_thrdn > 1) {
+		if (plm_lock_init(&disp_lock))
 			return (-1);
 	}
 
-	if (!plm_threads_create(thrdn, plm_disp_proc)) {
+	if (!plm_threads_create(disp_thrdn, plm_disp_proc)) {
 		plm_threads_run();
 		return (0);
 	}
 
-	if (thrdn > 1) 
-		plm_lock_destroy(&dg.dg_lock);
+	if (disp_thrdn > 1) 
+		plm_lock_destroy(&disp_lock);
 	
 	return (-1);
 }
@@ -86,23 +80,11 @@ int plm_disp_start()
  */
 void plm_disp_shutdown()
 {
-	thrdn = main_ctx.mc_work_thread_num;
-	
-	dg.dg_status = PLM_DISP_SHUTDOWN;
+	disp_status = PLM_DISP_SHUTDOWN;
 	plm_threads_end();
-
-	if (thrdn > 1)
-		plm_lock_destroy(&dg.dg_lock);
+	if (disp_thrdn > 1)
+		plm_lock_destroy(&disp_lock);
 }
-
-#define plm_poll_io(nevs, io, n)				   \
-	do {										   \
-		if (thrdn > 1)							   \
-			plm_lock_lock(&dg.dg_lock);			   \
-		nevs = plm_event_io_poll(io, n, timeout);  \
-		if (thrdn > 1)							   \
-			plm_lock_unlock(&dg.dg_lock);		   \
-	} while(0);
 
 static int plm_disp_open_log()
 {
@@ -135,8 +117,9 @@ static int plm_disp_open_log()
  */
 void plm_disp_proc()
 {
-	int max = main_ctx.mc_maxfd;
-	struct plm_event_io_callback *io_arr;
+	int timeout = 100;
+	struct plm_event_io_handler events[256];
+	int max = sizeof(events) / sizeof(events[0]);
 
 	if (plm_disp_open_log())
 		return;
@@ -145,32 +128,40 @@ void plm_disp_proc()
 		plm_log_write(PLM_LOG_FATAL, "work thread init hook failed");
 		return;
 	}
-
-	io_arr = (struct plm_event_io_callback *)
-		malloc(max * sizeof(struct plm_event_io_callback));
 	
-	if (!io_arr) {
-		plm_log_write(PLM_LOG_FATAL, "allocate io callback failed");
-		plm_log_close();
-		return;
-	}
-
 	plm_log_write(PLM_LOG_TRACE, "run in thread: %d", gettid());
-	
-	plm_atomic_test_and_set(&dg.dg_status, PLM_DISP_SHUTDOWN, PLM_DISP_RUNNING);
+	plm_atomic_test_and_set(&disp_status, PLM_DISP_SHUTDOWN, PLM_DISP_RUNNING);
 	for (;;) {
 		int i, n;
 
 		/* work thread read status here */
-		if (plm_atomic_int_get(&dg.dg_status) != PLM_DISP_RUNNING)
+		if (plm_atomic_int_get(&disp_status) != PLM_DISP_RUNNING)
 			break;
-		
-		plm_poll_io(n, io_arr, max);
-		for (i = 0; i < n; i++)
-			io_arr[i].eic_cb(io_arr[i].eic_data, io_arr[i].eic_fd);
+
+		/* process global */
+		if (!plm_lock_trylock(&disp_lock)) {
+			n = plm_event_io_poll2(events, max, timeout);
+			for (i = 0; i < n; i++) {
+				int fd = events[i].eih_fd;
+				if (events[i].eih_onread)
+					events[i].eih_onread(events[i].eih_rddata, fd);
+				if (events[i].eih_onwrite)
+					events[i].eih_onwrite(events[i].eih_wrdata, fd);
+			}
+			plm_lock_unlock(&disp_lock);
+		}
+
+		/* thread local */
+		n = plm_event_io_poll(events, max, timeout);
+		for (i = 0; i < n; i++) {
+			int fd = events[i].eih_fd;
+			if (events[i].eih_onread)
+				events[i].eih_onread(events[i].eih_rddata, fd);
+			if (events[i].eih_onwrite)
+				events[i].eih_onwrite(events[i].eih_wrdata, fd);
+		}
 	}
 
-	free(io_arr);
 	plm_log_close();
 	plm_plugin_work_thrd_destroy();
 }
@@ -178,6 +169,6 @@ void plm_disp_proc()
 /* notify threads to exit and return immediately */
 void plm_disp_notify_exit()
 {
-	plm_atomic_test_and_set(&dg.dg_status, PLM_DISP_RUNNING, PLM_DISP_SHUTDOWN);
-	plm_log_write(PLM_LOG_TRACE, "current status: %d", dg.dg_status);
+	plm_atomic_test_and_set(&disp_status, PLM_DISP_RUNNING, PLM_DISP_SHUTDOWN);
+	plm_log_write(PLM_LOG_TRACE, "current status: %d", disp_status);
 }

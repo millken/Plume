@@ -35,57 +35,87 @@ enum {
 	PLM_WRITE = 2,
 };
 
-struct plm_event_io_callback {
-	void (*eic_cb)(void *, int);
-	void *eic_data;
-	int eic_fd;
-};
+typedef enum {
+	PLM_THREAD_LOCAL,
+	PLM_PROCESS_GLOBAL
+} plm_poller_t;
+
+struct plm_event_io_handler {
+	void (*eih_onread)(void *, int);
+	void *eih_rddata;
+	void (*eih_onwrite)(void *, int);
+	void *eih_wrdata;
+	int eih_fd;
+};	
 
 struct plm_event_io {
-	int (*ei_init)(struct plm_event_io *e, int maxfd);
+	int (*ei_init)(struct plm_event_io *e, int maxfd, int thrdn);
 	int (*ei_shutdown)(struct plm_event_io *e);
-	int (*ei_poll)(struct plm_event_io_callback *io, int n, 
-				   struct plm_event_io *e, int timeout);
-	int (*ei_ctl)(struct plm_event_io *e, int fd, int flag);
-
-	int ei_maxfd;
-	struct plm_event_io_callback *ei_events_arr;
+	int (*ei_poll)(struct plm_event_io_handler *events, int n, 
+				   struct plm_event_io *e, int timeout, plm_poller_t t);
+	int (*ei_ctl)(struct plm_event_io *e, int fd, int flag, plm_poller_t t);
+	struct plm_event_io_handler *ei_events_arr;
 };
 
 /* init event driven io
- * @maxfd -- the max number of fd   
+ * @maxfd -- the max number of fd
+ * @thrdn -- the number of work thread
  * return 0 -- success, else error
  */
-int plm_event_io_init(int maxfd);
+int plm_event_io_init(int maxfd, int thrdn);
 
 /* shutdown the driven io
  * return 0 -- success, else error
  */
 int plm_event_io_shutdown();
 
-/* read data
+/* post read event on thread local poller
  * @fd -- file descriptor
  * @data -- the first argument for cb function
- * @cb -- callback function
+ * @handler -- handle event when ready
  * return 0 -- success, else error
  */
-int plm_event_io_read(int fd, void *data, void (*cb)(void *data, int fd));
+int plm_event_io_read(int fd, void *data, void (*handler)(void *, int));
 
-/* write data
+/* post read event on process global poller
  * @fd -- file descriptor
  * @data -- the first argument for cb function
- * @cb -- callback function
+ * @handler -- handle event when ready 
  * return 0 -- success, else error
  */
-int plm_event_io_write(int fd, void *data, void (*cb)(void *data, int fd));
+int plm_event_io_read2(int fd, void *data, void (*handler)(void *, int));	
 
-/* poll event
- * @io -- store io callback and data
- * @n -- max number of elements in io callback array
+/* post write event on thread local poller
+ * @fd -- file descriptor
+ * @data -- the first argument for cb function
+ * @handler -- handle event when ready 
+ * return 0 -- success, else error
+ */
+int plm_event_io_write(int fd, void *data, void (*handler)(void *, int));
+
+/* post write event on process global poller
+ * @fd -- file descriptor
+ * @data -- the first argument for cb function
+ * @handler -- handle event when ready  
+ * return 0 -- success, else error
+ */
+int plm_event_io_write2(int fd, void *data, void (*handler)(void *, int));
+
+/* poll event from the current thread poller
+ * @evts -- buffer to store events of ready
+ * @n -- number of element could store in events buffer 
  * @timeout -- timeout in ms
- * return the number of events actived, else -1 on error and 0 on timeout
+ * return the number of events of ready, else -1 on error and 0 on timeout
  */
-int plm_event_io_poll(struct plm_event_io_callback *io, int n, int timeout);
+int plm_event_io_poll(struct plm_event_io_handler *evts, int n, int timeout);
+
+/* poll event from the global poller, we use to poll the listen tcp socket
+ * @evts -- buffer to store events of ready
+ * @n -- number of element could store in events buffer
+ * @timeout -- timeout in ms
+ * return the number of events of ready, else -1 on error and 0 on timeout
+ */	
+int plm_event_io_poll2(struct plm_event_io_handler *evts, int n, int timeout);	
 
 #ifdef __cplusplus
 }

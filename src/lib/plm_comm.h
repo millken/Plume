@@ -67,10 +67,12 @@ void plm_comm_destroy();
  * @addr -- bind socket with addr if we want, NULL indicate ignore
  * @backlog -- pass to listen
  * @nonblocking -- create a nonblocking fd if set nonblocking to nonzero
+ * @reuseaddr -- set SO_REUSEADDR for socket
  * return a correct fd
  */
 int plm_comm_open(int type, const char *path, int flags, int mode,
-				  int port, const char *addr, int backlog, int nonblocking);
+				  int port, const char *addr, int backlog,
+				  int nonblocking, int reuseaddr);
 
 /* close the specific fd and call all the close handler
  * @fd -- a corrent fd

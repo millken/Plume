@@ -36,11 +36,14 @@
 #include "plm_threads.h"
 #include "plm_plugin_base.h"
 
-static int plm_logpath_set(void *ctx, plm_dlist_t *params);
-static int plm_work_thread_num_set(void *ctx, plm_dlist_t *params);
-static int plm_load_plugin_set(void *ctx, plm_dlist_t *params);
-static int plm_maxfd_set(void *ctx, plm_dlist_t *params);
-static int plm_work_thread_cpu_affinity_set(void *ctx, plm_dlist_t *params);
+static int plm_logpath_set(void *, plm_dlist_t *);
+static int plm_work_thread_num_set(void *, plm_dlist_t *);
+static int plm_load_plugin_set(void *, plm_dlist_t *);
+static int plm_maxfd_set(void *, plm_dlist_t *);
+static int plm_work_thread_cpu_affinity_set(void *, plm_dlist_t *);
+static int plm_memtag_set(void *, plm_dlist_t *);
+static int plm_tagcheck_set(void *, plm_dlist_t *);
+static int plm_zeromem_set(void *, plm_dlist_t *);
 
 static void *plm_main_ctx_create(void *unused);
 static void plm_main_ctx_destroy(void *ctx);
@@ -94,6 +97,30 @@ static struct plm_cmd main_cmd[] = {
 		plm_string("work_thread_cpu_affinity"),
 		PLM_INSTRUCTION,
 		plm_work_thread_cpu_affinity_set,
+		NULL,
+		NULL
+	},
+	{
+		&main_plugin,
+		plm_string("memtag"),
+		PLM_INSTRUCTION,
+		plm_memtag_set,
+		NULL,
+		NULL
+	},
+	{
+		&main_plugin,
+		plm_string("tagcheck"),
+		PLM_INSTRUCTION,
+		plm_tagcheck_set,
+		NULL,
+		NULL
+	},
+	{
+		&main_plugin,
+		plm_string("zeromem"),
+		PLM_INSTRUCTION,
+		plm_zeromem_set,
 		NULL,
 		NULL
 	},
@@ -370,7 +397,8 @@ int plm_work_thread_cpu_affinity_set(void *ctx, plm_dlist_t *params)
 	struct plm_cmd_param *param;
 
 	n = PLM_DLIST_LEN(params);
-	param = (struct plm_cmd_param *)PLM_DLIST_FRONT(params);
+	if (n == 0)
+		return (-1);
 
 	if (n < 0)
 		n = 127;
@@ -380,12 +408,64 @@ int plm_work_thread_cpu_affinity_set(void *ctx, plm_dlist_t *params)
 		return (-1);
 
 	main_ctx.mc_cpu_affinity_id_num = n;
-
+	param = (struct plm_cmd_param *)PLM_DLIST_FRONT(params);
 	while (param) {
 		main_ctx.mc_cpu_affinity_id[i++] = plm_bitset2int64(&param->cp_data);
 		param = (struct plm_cmd_param *)PLM_DLIST_NEXT(&param->cp_node);
 	}
 	
+	return (0);
+}
+
+unsigned int plm_hex2i(int *err, plm_string_t *str)
+{
+	
+}
+
+int plm_memtag_set(void *ctx, plm_dlist_t *params)
+{
+	int err;
+	struct plm_cmd_param *param;
+
+	if (PLM_DLIST_LEN(params) != 1)
+		return (-1);
+
+	param = (struct plm_cmd_param *)PLM_DLIST_FRONT(params);
+	main_ctx.mc_tag = plm_hex2i(&err, &param->cp_data);
+	return (err);
+}
+
+int plm_tagcheck_set(void *ctx, plm_dlist_t *params)
+{
+	struct plm_cmd_param *param;
+	plm_string_t on = plm_string("on");
+	
+	if (PLM_DLIST_LEN(params) != 1)
+		return (-1);
+
+	param = (struct plm_cmd_param *)PLM_DLIST_FRONT(params);
+	if (0 == plm_strcmp(&param->cp_data, &on))
+		main_ctx.mc_tagcheck = 1;
+	else
+		main_ctx.mc_tagcheck = 0;
+
+	return (0);
+}
+
+int plm_zeromem_set(void *ctx, plm_dlist_t *params)
+{
+	struct plm_cmd_param *param;
+	plm_string_t on = plm_string("on");	
+
+	if (PLM_DLIST_LEN(params) != 1)
+		return (-1);
+
+	param = (struct plm_cmd_param *)PLM_DLIST_FRONT(params);
+	if (0 == plm_strcmp(&param->cp_data, &on))
+		main_ctx.mc_zeromem = 1;
+	else
+		main_ctx.mc_zeromem = 0;
+
 	return (0);
 }
 
@@ -396,10 +476,12 @@ void *plm_main_ctx_create(void *unused)
 	
 	main_ctx.mc_work_thread_num = 1;
 	main_ctx.mc_maxfd = 1024;
-	main_ctx.mc_poll_timeout = 100;
 	main_ctx.mc_log_level = 1;
 	main_ctx.mc_cpu_affinity_id = NULL;
 	main_ctx.mc_cpu_affinity_id_num = 0;
+	main_ctx.mc_zeromem = 1;
+	main_ctx.mc_tagcheck = 1;
+	main_ctx.mc_tag = -1;
 	plm_strcat2(&main_ctx.mc_log_path, &plm_prefix, &logs);
 	
 	return &main_ctx;
@@ -421,8 +503,8 @@ int plm_main_on_work_proc_start(struct plm_ctx_list *ctx)
 	int thrdsafe = thrdn > 1;
 
 	plm_buffer_init(thrdsafe);
-	if (!plm_comm_init(main_ctx.mc_maxfd)) {
-		if (!plm_event_io_init(maxfd))
+	if (!plm_comm_init(maxfd)) {
+		if (!plm_event_io_init(maxfd, thrdn))
 			return (0);
 
 		plm_comm_destroy();

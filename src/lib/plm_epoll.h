@@ -26,6 +26,7 @@
 #ifndef _PLM_EPOLL_H
 #define _PLM_EPOLL_H
 
+#include <stdint.h>
 #include <sys/epoll.h>
 
 #include "plm_event.h"
@@ -36,22 +37,23 @@ extern "C" {
 
 struct plm_epoll_io {
 	struct plm_event_io ei_event_base;
-	struct epoll_event *ei_epoll_events;
-	int ei_epoll_fd;
+	int ei_efd_global;
+	int8_t ei_efd_local_num;
+	int ei_efd_local[0];
 };
 
 /* init epoll */
-int plm_epoll_io_init(struct plm_event_io *e, int maxfd);
+int plm_epoll_io_init(struct plm_event_io *e, int maxfd, int thrdn);
 
 /* destroy epoll */
 int plm_epoll_io_shutdown(struct plm_event_io *e);
 
 /* epoll wait */
-int plm_epoll_io_poll(struct plm_event_io_callback *io, int n,
-					  struct plm_event_io *e, int timeout);
+int plm_epoll_io_poll(struct plm_event_io_handler *io, int n,
+					  struct plm_event_io *e, int timeout, plm_poller_t t);
 
 /* epoll contrl */
-int plm_epoll_io_ctl(struct plm_event_io *e, int fd, int flag);
+int plm_epoll_io_ctl(struct plm_event_io *e, int fd, int flag, plm_poller_t t);
 
 #ifdef __cplusplus
 }

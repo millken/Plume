@@ -125,3 +125,43 @@ void plm_http_conn_free(void *data)
 	}
 }
 
+void plm_http_read_header(void *data, int fd)
+{
+	int header_done = 0;
+	struct plm_http_conn *conn;
+
+	conn = (struct plm_http_conn *)data;
+	for (;;) {
+		int rc, n, parsed;
+
+		n = plm_comm_read(fd, conn->hc_buf + conn->hc_offset,
+						  conn->hc_size - conn->hc_offset);
+		if (n == EWOULDBLOCK)
+			break;
+
+		rc = plm_http_proto_parse(&parsed, &conn->hc_request.hr_http_header,
+								  conn->hc_buf, n);
+		if (rc == PLM_HTTP_PARSE_DONE) {
+			header_done = 1;
+			break;
+		}
+		
+		conn->hc_offset = n - parsed;
+		memmove(conn->hc_buf, conn->hc_buf + parsed, conn->hc_offset);
+	}
+
+	if (header_done) {
+		plm_http_request_chain_process(&conn->hc_request);
+		if (plm_event_io_read(fd, data, plm_http_read_body)) {
+			plm_comm_close(fd);
+			plm_log_write(PLM_LOG_FATAL, "plm_event_io_read failed: %s",
+						  strerror(errno));
+		}
+	} else {
+		if (plm_event_io_read(fd, data, plm_http_read_header)) {
+			plm_comm_close(fd);
+			plm_log_write(PLM_LOG_FATAL, "plm_event_io_read failed: %s",
+						  strerror(errno));
+		}		
+	}
+}

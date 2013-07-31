@@ -23,7 +23,7 @@
  * SUCH DAMAGE.
  */
 
-#include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "plm_lookaside_list.h"
@@ -99,7 +99,7 @@ void plm_lookaside_list_destroy(struct plm_lookaside_list *list)
 			(n - PLM_STRUCT_OFFSET(struct plm_lookaside_list_node, lln_node));
 		if (list->ll_onoff.ll_tag_check) {
 			if (obj_hdr->lln_tag != list->ll_tag)
-				assert(0);
+				abort();
 		}
 
 		list->ll_free(obj_hdr);
@@ -136,7 +136,7 @@ void *plm_lookaside_list_alloc(struct plm_lookaside_list *list,
 		if (list->ll_onoff.ll_tag_check) {
 			if (((struct plm_lookaside_list_node *)obj_hdr)->lln_tag
 				!= list->ll_tag)
-				assert(0);
+				abort();
 		}
 	} else {
 		obj_hdr = (char *)list->ll_alloc
@@ -178,7 +178,7 @@ void plm_lookaside_list_free(struct plm_lookaside_list *list, void *obj,
 
 	if (list->ll_onoff.ll_tag_check) {
 		if (obj_hdr->lln_tag != list->ll_tag)
-			assert(0);
+			abort();
 	}
 
 	if (list->ll_onoff.ll_thrdsafe)

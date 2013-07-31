@@ -322,10 +322,41 @@ static void plm_echo_accept(void *data, int fd)
 	int clifd;
 	struct sockaddr_in addr;
 
-	clifd = plm_comm_accept(fd, &addr, 1);
-	
-	plm_event_io_read(fd, data, plm_echo_accept);
+	for (;;) {
+		clifd = plm_comm_accept(fd, &addr, 1);
+		if (clifd > 0) {
+			struct plm_echo_client *cli;
 
+			cli = plm_echo_alloc_client();
+			if (cli) {
+				cli->ec_ctx = (struct plm_echo_ctx *)data;
+				if (!plm_event_io_read(clifd, cli, plm_echo_read)) {
+					clifd = -1;
+					plm_log_write(PLM_LOG_TRACE,
+								  "plm_echo_accept: accept new connection=%d",
+								  clifd);
+				} else {
+					plm_echo_free_client(cli);
+				}
+			}
+
+			if (clifd > 0)
+				plm_comm_close(clifd);
+		} else {
+			break;
+		}
+	}
+
+	plm_event_io_read2(fd, data, plm_echo_accept);
+	plm_log_write(PLM_LOG_WARNING, "plm_echo_accept: accept failed");
+}
+
+static void plm_echo_accept2(void *data, int fd)
+{
+	int clifd;
+	struct sockaddr_in addr;
+
+	clifd = plm_comm_accept(fd, &addr, 1);
 	if (clifd > 0) {
 		struct plm_echo_client *cli;
 
@@ -333,16 +364,20 @@ static void plm_echo_accept(void *data, int fd)
 		if (cli) {
 			cli->ec_ctx = (struct plm_echo_ctx *)data;
 			if (!plm_event_io_read(clifd, cli, plm_echo_read)) {
+				clifd = -1;
 				plm_log_write(PLM_LOG_TRACE,
 							  "plm_echo_accept: accept new connection=%d",
 							  clifd);
-				return;
+			} else {
+				plm_echo_free_client(cli);
 			}
-
-			plm_echo_free_client(cli);
 		}
+
+		if (clifd > 0)
+			plm_comm_close(clifd);
 	}
 
+	plm_event_io_read2(fd, data, plm_echo_accept2);
 	plm_log_write(PLM_LOG_WARNING, "plm_echo_accept: accept failed");
 }
 
@@ -366,14 +401,14 @@ int plm_echo_on_work_proc_start(struct plm_ctx_list *cl)
 	plm_lookaside_list_enable(&blk_list, sp.sp_zeromem, sp.sp_tagcheck,
 							  sp.sp_thrdn > 1);
 	echo_server_fd = plm_comm_open(PLM_COMM_TCP, NULL, 0, 0, conf->ec_port,
-								   NULL, 100, 1);
+								   NULL, 100, 1, 1);
 	if (echo_server_fd < 0) {
 		plm_log_syslog("can't open echo plugin listen fd");
 		return (-1);
 	}
 	
 	ctx.ec_conf = conf;
-	rc = plm_event_io_read(echo_server_fd, &ctx, plm_echo_accept);
+	rc = plm_event_io_read2(echo_server_fd, &ctx, plm_echo_accept);
 	if (rc < 0) {
 		plm_log_syslog("plm_echo_on_work_proc_start"
 					  ": plm_event_io_read failed=%d", rc);

@@ -43,7 +43,8 @@ struct plm_comm_fd {
 static struct plm_comm_fd *commfd_array;
 
 static int
-plm_comm_open_socket(int type, int port, const char *addr, int backlog);
+plm_comm_open_socket(int type, int port, const char *addr,
+					 int backlog, int reuseaddr);
 
 /* init commom stuff
  * @maxfd -- the max number of fd
@@ -75,10 +76,12 @@ void plm_comm_destroy()
  * @addr -- bind socket with addr if we want, NULL indicate ignore
  * @backlog -- pass to listen
  * @nonblocking -- create a nonblocking fd if set nonblocking to nonzero
+ * @reuseaddr -- set SO_REUSEADDR for socket 
  * return a correct fd
  */
 int plm_comm_open(int type, const char *path, int flags, int mode,
-				  int port, const char *addr, int backlog, int nonblocking)
+				  int port, const char *addr, int backlog,
+				  int nonblocking, int reuseaddr)
 {
 	int fd = -1;
 	struct plm_comm_fd *commfd;
@@ -90,7 +93,7 @@ int plm_comm_open(int type, const char *path, int flags, int mode,
 
 	case PLM_COMM_TCP:
 	case PLM_COMM_UDP:
-		fd = plm_comm_open_socket(type, port, addr, backlog);
+		fd = plm_comm_open_socket(type, port, addr, backlog, reuseaddr);
 		break;
 	}
 
@@ -246,7 +249,8 @@ void plm_comm_add_close_handler(int fd, struct plm_comm_close_handler *handler)
 	commfd_array[fd].cf_handler = handler;
 }
 
-int plm_comm_open_socket(int type, int port, const char *addr, int backlog)
+int plm_comm_open_socket(int type, int port, const char *addr,
+						 int backlog, int reuseaddr)
 {
 	int sock_type, fd;
 	struct sockaddr_in addrin;
@@ -263,6 +267,14 @@ int plm_comm_open_socket(int type, int port, const char *addr, int backlog)
 	fd = socket(AF_INET, sock_type, IPPROTO_TCP);
 	if (fd < 0)
 		return (-1);
+
+	if (reuseaddr) {
+		int on = 1;
+		if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
+			close(fd);
+			return (-1);
+		}
+	}
 
 	if (port > 0) {
 		addrin.sin_family = AF_INET;

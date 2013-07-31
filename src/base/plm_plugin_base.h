@@ -46,16 +46,16 @@ struct plm_main_ctx {
 	/* max file descriptor number */
 	int mc_maxfd;
 
+	/* on/off */
 	uint8_t mc_zeromem : 1;
 	uint8_t mc_tagcheck : 1;
+	
+	/* mem node tag */
 	unsigned int mc_tag;
 
 	/* array of cpu id if set by work_thread_cpu_affinity */
 	uint64_t *mc_cpu_affinity_id;
 	int8_t mc_cpu_affinity_id_num;
-
-	/* poll timeout value */
-	int mc_poll_timeout;
 
 	/* destroy main ctx */
 	void (*mc_free)(void *);

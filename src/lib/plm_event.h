@@ -30,6 +30,10 @@
 extern "C" {
 #endif
 
+#ifndef MAX_EVENTS
+#define MAX_EVENTS 256	
+#endif	
+
 enum {
 	PLM_READ = 1,
 	PLM_WRITE = 2,

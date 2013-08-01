@@ -120,18 +120,10 @@ int plm_comm_open(int type, const char *path, int flags, int mode,
  */
 int plm_comm_close(int fd)
 {
-	int type;
 	struct plm_comm_fd *commfd = NULL;
 
-	if (!close(fd)) {
-		commfd = &commfd_array[fd];
-		assert(commfd->cf_open == 1);
-		type = commfd->cf_type;
-		commfd->cf_open = 0;
-		commfd->cf_associate = 0;
-		fd = -1;
-	}
-
+	commfd = &commfd_array[fd];
+	assert(commfd->cf_open == 1);
 	if (commfd && commfd->cf_handler) {
 		do {
 			struct plm_comm_close_handler *ch;
@@ -150,7 +142,9 @@ int plm_comm_close(int fd)
 		} while (1);
 	}
 
-	return (fd < 0 ? 0 : -1);
+	commfd->cf_open = 0;
+	commfd->cf_associate = 0;
+	return close(fd);
 }
 
 /* connect to remote

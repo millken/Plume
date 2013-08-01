@@ -65,11 +65,18 @@ struct plm_list {
 		(list)->l_len++;				\
 	} while (0)
 
+#define PLM_LIST_INSERT_BACK(l, old, new)	\
+	do {									\
+		(new)->ln_next = (old)->ln_next;	\
+		(old)->ln_next = (new);				\
+		(l)->l_len++;						\
+	} while (0)
+
 /* delete the head node */
-#define PLM_LIST_DEL_FRONT(list)		\
+#define PLM_LIST_DEL_FRONT(list)	\
 	do {							\
 		plm_list_node_t **_head;	\
-		if ((list)->l_len == 0)	\
+		if ((list)->l_len == 0)		\
 			break;					\
 		_head = &(list)->l_head;	\
 		*_head = (*_head)->ln_next;	\
@@ -79,9 +86,9 @@ struct plm_list {
 /* remove a node from list
  * O(n)
  */
-#define PLM_LIST_REMOVE(list, node)					\
-	do {											\
-		plm_list_node_t **_pp;						\
+#define PLM_LIST_REMOVE(list, node)		\
+	do {								\
+		plm_list_node_t **_pp;			\
 		for (_pp = &(list)->l_head; *_pp;			\
 			 *_pp ? _pp = &(*_pp)->ln_next : 0) {	\
 			if ((node) == *_pp) {		\
@@ -97,9 +104,9 @@ struct plm_list {
  * O(n)
  */
 #define PLM_LIST_REMOVE_IF(list, func, data)	\
-	do {									\
-		plm_list_node_t **_pp;				\
-		for (_pp = &(list)->l_head; *_pp;	\
+	do {										\
+		plm_list_node_t **_pp;					\
+		for (_pp = &(list)->l_head; *_pp;			\
 			 *_pp ? _pp = &(*_pp)->ln_next : 0) {	\
 			if (func(*_pp, data)) {			\
 				*_pp = (*_pp)->ln_next;		\

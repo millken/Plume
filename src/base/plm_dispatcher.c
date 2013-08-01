@@ -117,8 +117,7 @@ static int plm_disp_open_log()
  */
 void plm_disp_proc()
 {
-	int timeout = 100;
-	struct plm_event_io_handler events[256];
+	struct plm_event_io_handler events[MAX_EVENTS];
 	int max = sizeof(events) / sizeof(events[0]);
 
 	if (plm_disp_open_log())
@@ -132,7 +131,8 @@ void plm_disp_proc()
 	plm_log_write(PLM_LOG_TRACE, "run in thread: %d", gettid());
 	plm_atomic_test_and_set(&disp_status, PLM_DISP_SHUTDOWN, PLM_DISP_RUNNING);
 	for (;;) {
-		int i, n;
+		int i, n = 0;
+		int timeout = 0;
 
 		/* work thread read status here */
 		if (plm_atomic_int_get(&disp_status) != PLM_DISP_RUNNING)
@@ -150,6 +150,11 @@ void plm_disp_proc()
 			}
 			plm_lock_unlock(&disp_lock);
 		}
+
+		/* check and run timer */
+		timeout = plm_timer_run();
+		if (n == 0 && timeout == 0)
+			timeout = 100;
 
 		/* thread local */
 		n = plm_event_io_poll(events, max, timeout);

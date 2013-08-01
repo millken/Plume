@@ -23,36 +23,40 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _PLM_EPOLL_H
-#define _PLM_EPOLL_H
-
-#include <sys/epoll.h>
-
-#include "plm_event.h"
+#ifndef _PLM_TIMER_H
+#define _PLM_TIMER_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct plm_epoll_io {
-	struct plm_event_io ei_event_base;
-	int ei_efd_global;
-	int ei_efd_local_num;
-	int ei_efd_local[0];
-};
+/* init timer list
+ * @thrdn -- number of thread
+ * return zero on success, else -1
+ */
+int plm_timer_init(int thrdn);
 
-/* init epoll */
-int plm_epoll_io_init(struct plm_event_io *e, int maxfd, int thrdn);
+/* destroy timer list */	
+void plm_timer_destroy();	
 
-/* destroy epoll */
-int plm_epoll_io_shutdown(struct plm_event_io *e);
+/* add a timer in the current thread timer list
+ * @handler -- handle to event when time expire
+ *             a handler must be return nonzero value
+ *             when the handler is time consuming
+ * @data -- pass to handler
+ * @delta -- delta time in ms
+ * return zero on success, else -1
+ */
+int plm_timer_add(int (*handler)(void *), void *data, int delta);
 
-/* epoll wait */
-int plm_epoll_io_poll(struct plm_event_io_handler *io, int n,
-					  struct plm_event_io *e, int timeout, plm_poller_t t);
+/* delete a timer from the current thread timer list */
+void plm_timer_del(int (*handler)(void *), void *data);
 
-/* epoll contrl */
-int plm_epoll_io_ctl(struct plm_event_io *e, int fd, int flag, plm_poller_t t);
+/* check thread timer list
+ * return immediately if no timer expire
+ * the return value is delta value in ms when the  next timer expire
+ */
+int plm_timer_run();
 
 #ifdef __cplusplus
 }

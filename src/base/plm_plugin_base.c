@@ -34,6 +34,7 @@
 #include "plm_ctx.h"
 #include "plm_comm.h"
 #include "plm_threads.h"
+#include "plm_timer.h"
 #include "plm_plugin_base.h"
 
 static int plm_logpath_set(void *, plm_dlist_t *);
@@ -503,14 +504,18 @@ int plm_main_on_work_proc_start(struct plm_ctx_list *ctx)
 	int thrdsafe = thrdn > 1;
 
 	plm_buffer_init(thrdsafe);
+	if (plm_timer_init(thrdn))
+		return (-1);
+	
 	if (!plm_comm_init(maxfd)) {
 		if (!plm_event_io_init(maxfd, thrdn))
 			return (0);
 
 		plm_comm_destroy();
-		plm_buffer_destroy();
 	}
-
+	
+	plm_timer_destroy();
+	plm_buffer_destroy();
 	return (-1);
 }
 

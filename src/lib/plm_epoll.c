@@ -25,11 +25,11 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "plm_comm.h"
 #include "plm_epoll.h"
 
-#define MAX_EVENTS 256
 #define PLM_STRUCT_OFFSET(s, m)	(size_t)&(((s *)0)->m)
 
 extern __thread int curr_slot;

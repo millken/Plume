@@ -71,7 +71,7 @@ typedef struct plm_dlist plm_dlist_t;
 	do {									\
 		(node)->dn_next = (list)->d_head;	\
 		(node)->dn_prev = NULL;				\
-		if ((list)->d_head)				\
+		if ((list)->d_head)						\
 			(list)->d_head->dn_prev = (node);	\
 		(list)->d_head = (node);			\
 		if (!(list)->d_tail)				\
@@ -116,13 +116,38 @@ typedef struct plm_dlist plm_dlist_t;
 			(list)->d_head = NULL;				\
 	} while (0)
 
+#define PLM_DLIST_INSERT_BACK(l, old, new)	\
+	do {									\
+		(new)->dn_next = (old)->dn_next;	\
+		if ((new)->dn_next)					\
+			(new)->dn_next->dn_prev = (new);\
+		(old)->dn_next = (new);				\
+		(new)->dn_prev = (old);				\
+		if ((old) == (l)->d_tail)			\
+			(l)->d_tail = (new);			\
+		(l)->d_len++;						\
+	} while (0)
+
+#define PLM_DLIST_INSERT_FRONT(l, old, new)	\
+	do {									\
+		(new)->dn_next = (old);				\
+		if ((old)->dn_prev)					\
+			(old)->dn_prev->dn_next = (new);\
+		(new)->dn_prev = (old)->dn_prev;	\
+		(old)->dn_prev = (new);				\
+		if ((old) == (l)->d_head)			\
+			(l)->d_head = (new);			\
+		(l)->d_len++;						\
+	} while (0)
+
+
 /* search node with:
  * int func(plm_dlist_node_t *node, void *data)
  * func return 1 indicate matched, else 0
  */
 #define PLM_DLIST_SEARCH(pp, list, func, data)	\
 	do {										\
-		plm_dlist_node_t *_curr;			\
+		plm_dlist_node_t *_curr;										\
 		for (_curr = (list)->d_head; _curr; _curr = _curr->dn_next) {	\
 			if (func(_curr, (data))) {			\
 				*(pp) = _curr;					\
@@ -151,8 +176,8 @@ typedef struct plm_dlist plm_dlist_t;
  * int func(plm_dlist_node_t *node, void *data)
  * func return 1 indicate matched, else 0
  */
-#define PLM_DLIST_REMOVE_IF(list, func, data)		\
-	do {											\
+#define PLM_DLIST_REMOVE_IF(list, func, data)	\
+	do {										\
 		plm_dlist_node_t *_target = NULL;		\
 		PLM_DLIST_SEARCH(&_target, list, func, data);	\
 		if (_target)									\
@@ -164,7 +189,7 @@ typedef struct plm_dlist plm_dlist_t;
  */
 #define PLM_DLIST_FOREACH(list, func, data)	\
 	do {									\
-		plm_dlist_node_t *_n;			\
+		plm_dlist_node_t *_n;								\
 		for (_n = (list)->d_head; _n; _n = _n->dn_next) {	\
 			func(_n, data);					\
 		}									\

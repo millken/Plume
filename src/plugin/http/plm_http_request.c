@@ -90,8 +90,8 @@ struct plm_http_conn *plm_http_conn_alloc(struct plm_http_ctx *ctx,
 {
 	struct plm_http_conn *conn;
 
-	conn = (struct plm_http_conn *)plm_lookaside_list_alloc(&ctx->hc_conn_pool,
-															NULL);
+	conn = (struct plm_http_conn *)
+		plm_lookaside_list_alloc(&ctx->hc_conn_pool, NULL);
 	if (conn) {
 		conn->hc_buf = plm_buffer_alloc(MEM_4K);
 		if (conn->hc_buf) {
@@ -102,7 +102,7 @@ struct plm_http_conn *plm_http_conn_alloc(struct plm_http_ctx *ctx,
 			memcpy(&conn->hc_addr, addr, sizeof(conn->hc_addr));
 
 			plm_mempool_init(&conn->hc_pool, 512, malloc, free);
-			plm_http_proto_init(&conn->hc_request.hr_http_header);
+			plm_http_init(&conn->hc_request, PLM_HTTP_REQUEST);
 		
 			conn->hc_close_handler.cch_handler = plm_http_conn_free;
 			conn->hc_close_handler.cch_data = conn;
@@ -139,10 +139,13 @@ void plm_http_read_header(void *data, int fd)
 		if (n == EWOULDBLOCK)
 			break;
 
-		rc = plm_http_proto_parse(&parsed, &conn->hc_request.hr_http_header,
+		rc = plm_http_parse(&parsed, &conn->hc_request.hr_http_header,
 								  conn->hc_buf, n);
 		if (rc == PLM_HTTP_PARSE_DONE) {
 			header_done = 1;
+			break;
+		} else if (rc == PLM_HTTP_PARSE_ERROR) {
+			/* indicate bad request */
 			break;
 		}
 		

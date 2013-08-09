@@ -85,8 +85,12 @@ void *plm_mempool_alloc(struct plm_mempool *pool, size_t objsz)
 	
 	if (!pool->m_curr) {
 		struct plm_memnode *node;
-		size_t blksz = pool->m_init_blksz + sizeof(struct plm_memnode);
-		size_t m = blksz % sizeof(void *);
+		size_t blksz, m;
+
+		blksz = pool->m_init_blksz + sizeof(struct plm_memnode);
+		blksz = blksz >= objsz ? blksz : objsz;
+		
+		m = blksz % sizeof(void *);
 		if (m != 0)
 			blksz += sizeof(void *) - m;
 
@@ -100,10 +104,10 @@ void *plm_mempool_alloc(struct plm_mempool *pool, size_t objsz)
 	}
 
 	if (objsz > pool->m_curr_free) {
-		size_t m;
-		size_t blksz = pool->m_init_blksz;
+		size_t m, blksz;
 		struct plm_memnode *node;
-
+		
+		blksz = pool->m_init_blksz;
 		while (blksz < objsz)
 			blksz += pool->m_init_blksz;
 

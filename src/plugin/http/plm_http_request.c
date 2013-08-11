@@ -25,9 +25,13 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "plm_comm.h"
 #include "plm_event.h"
+#include "plm_log.h"
+#include "plm_buffer.h"
+#include "plm_http_plugin.h"
 #include "plm_http_request.h"
 
 static void plm_http_read_header(void *, int);
@@ -60,7 +64,7 @@ void plm_http_accept(void *data, int fd)
 		}
 
 		retry++;
-		conn = plm_http_conn_alloc(ctx, clifd);
+		conn = plm_http_conn_alloc(ctx, &addr, clifd);
 		if (!conn) {
 			plm_comm_close(clifd);
 			plm_log_write(PLM_LOG_FATAL, "plm_http_conn_alloc failed");
@@ -79,7 +83,7 @@ void plm_http_accept(void *data, int fd)
 
 	err = plm_event_io_read(fd, data, plm_http_accept);
 	if (err) {
-		plm_log_write(PLM_LOG_FALTA, "plm_event_io_read on listen fd "
+		plm_log_write(PLM_LOG_FATAL, "plm_event_io_read on listen fd "
 					  "failed: %s", strerror(errno));
 	}   
 }
@@ -102,7 +106,8 @@ struct plm_http_conn *plm_http_conn_alloc(struct plm_http_ctx *ctx,
 			memcpy(&conn->hc_addr, addr, sizeof(conn->hc_addr));
 
 			plm_mempool_init(&conn->hc_pool, 512, malloc, free);
-			plm_http_init(&conn->hc_request, PLM_HTTP_REQUEST);
+			plm_http_init(&conn->hc_request.hr_http, PLM_HTTP_REQUEST,
+						  &conn->hc_pool);
 		
 			conn->hc_close_handler.cch_handler = plm_http_conn_free;
 			conn->hc_close_handler.cch_data = conn;
@@ -120,7 +125,7 @@ void plm_http_conn_free(void *data)
 
 	conn = (struct plm_http_conn *)data;
 	if (conn->hc_buf) {
-		plm_buffer_free(conn->hc_buf);
+		plm_buffer_free(MEM_4K, conn->hc_buf);
 		plm_mempool_destroy(&conn->hc_pool);
 	}
 }
@@ -132,15 +137,16 @@ void plm_http_read_header(void *data, int fd)
 
 	conn = (struct plm_http_conn *)data;
 	for (;;) {
-		int rc, n, parsed;
+		int rc, n;
+		size_t parsed;
 
 		n = plm_comm_read(fd, conn->hc_buf + conn->hc_offset,
 						  conn->hc_size - conn->hc_offset);
 		if (n == EWOULDBLOCK)
 			break;
 
-		rc = plm_http_parse(&parsed, &conn->hc_request.hr_http_header,
-								  conn->hc_buf, n);
+		rc = plm_http_parse(&parsed, &conn->hc_request.hr_http,
+							conn->hc_buf, n);
 		if (rc == PLM_HTTP_PARSE_DONE) {
 			header_done = 1;
 			break;
@@ -167,4 +173,12 @@ void plm_http_read_header(void *data, int fd)
 						  strerror(errno));
 		}		
 	}
+}
+
+void plm_http_read_body(void *data, int fd)
+{
+}
+
+void plm_http_request_chain_process(struct plm_http_request *request)
+{
 }

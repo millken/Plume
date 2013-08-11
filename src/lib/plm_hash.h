@@ -23,56 +23,66 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _PLM_HTTP_PLUGIN_H
-#define _PLM_HTTP_PLUGIN_H
+#ifndef _PLM_HASH_H
+#define _PLM_HASH_H
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
+#include <stdint.h>
 
-#include "plm_mempool.h"
-#include "plm_lookaside_list.h"
-#include "plm_dlist.h"
-#include "plm_http.h"
+#include "plm_list.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct plm_http_ctx {
-	int hc_fd;
-
-	plm_string_t hc_addr;
-	short hc_port;
-
-	int hc_backlog;
-
-	struct plm_lookaside_list hc_conn_pool;
-
-	/* some sub block, such as location */
-	plm_dlist_t hc_sub_block;
+struct plm_hash_node {
+	plm_list_node_t hn_node;
+	void *hn_key;
+	void *hn_value;
 };
 
-struct plm_http_request {
-	struct plm_http_request *hr_next;
-	struct plm_http hr_http;
+struct plm_hash_bucket {
+	plm_list_t hb_list;
 };
 
-struct plm_http_conn {
-	int hc_fd;
-	struct plm_http_request hc_request;
-	struct plm_mempool hc_pool;
-	struct sockaddr_in hc_addr;
-	struct plm_comm_close_handler hc_close_handler;
-	struct {
-		char *hc_buf;
-		size_t hc_size;
-		size_t hc_offset;
-	};
+struct plm_hash {
+	void *(*h_alloc)(size_t, void *);
+	void (*h_free)(void *, void *);
+	uint32_t (*h_key)(void *, uint32_t);
+	int (*h_cmp)(void *, void *);
+	void *h_data;
+	uint32_t h_len;
+	uint32_t h_bucket_num;
+	struct plm_hash_bucket *h_bucket;
 };
+
+/* init hash returns 0 on success, else -1 */
+int plm_hash_init(struct plm_hash *hash, uint32_t max_bucket,
+				  uint32_t (*key)(void *, uint32_t), int (*cmp)(void *, void *),
+				  void *(*alloc)(size_t, void *), void (*free)(void *, void *),
+				  void *data);
+
+/* insert hash node */
+void plm_hash_insert(struct plm_hash *hash, struct plm_hash_node *node);
+
+/* find hash node by key returns 0 on success, else -1 */
+int plm_hash_find(struct plm_hash_node **pp, struct plm_hash *hash,
+				  void *key, void *value);
+
+/* delete all values with the same key */
+void plm_hash_delete(struct plm_hash *hash, void *key);
+
+/* remove the node with specifiy key and value */	
+void plm_hash_delete2(struct plm_hash *hash, void *key, void *value);
+
+/* destroy hash and free the bucket */
+#define plm_hash_destroy(hash)					\
+	do {										\
+		(hash)->h_free((hash)->h_bucket, (hash)->h_data);	\
+		(hash)->h_len = 0;						\
+	} while (0)
 
 #ifdef __cplusplus
 }
-#endif	
+#endif
 
 #endif

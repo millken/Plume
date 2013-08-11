@@ -42,27 +42,41 @@ typedef struct plm_string {
 #define plm_string(s) { s, sizeof(s) }
 
 #define plm_strlen(s) (s)->s_len
-#define plm_strappend(s, a, n, p) \
-	do { \
-		const char *old_mem = (s)->s_str; \
-		size_t new_len = (s)->s_len + n; \
-		char *new_mem = (char *)plm_mempool_alloc(p, new_len); \
-		if (new_mem) { \
-			memcpy(new_mem, old_mem, (s)->s_len); \
-			memcpy(new_mem+(s)->s_len, a, n); \
-			(s)->s_str = new_mem; \
-			(s)->s_len = new_len; \
-		} \
+	
+#define plm_strappend(s, a, n, p)									\
+	do {															\
+		const char *old_mem = (s)->s_str;							\
+		size_t new_len = (s)->s_len + (n);							\
+		char *new_mem = (char *)plm_mempool_alloc((p), new_len);	\
+		if (new_mem) {												\
+			memcpy(new_mem, old_mem, (s)->s_len);					\
+			memcpy(new_mem+(s)->s_len, (a), (n));					\
+			(s)->s_str = new_mem;									\
+			(s)->s_len = new_len;									\
+		}															\
 	} while(0)
-#define plm_strassign(s, a, n, p) \
-	do { \
-		char *str = (char *)plm_mempool_alloc(p, n); \
-		if (str) { \
-			memcpy(str, a, n); \
-			(s)->s_str = str; \
-			(s)->s_len = n; \
-		} \
+	
+#define plm_strassign(s, a, n, p)							\
+	do {													\
+		char *str = (char *)plm_mempool_alloc((p), (n));	\
+		if (str) {											\
+			memcpy(str, (a), (n));							\
+			(s)->s_str = str;								\
+			(s)->s_len = (n);								\
+		}													\
 	} while(0)
+
+#define plm_stralloc(pp, s, n, p)							\
+	do {													\
+	    plm_string_t *str = (plm_string_t *)				\
+		plm_mempool_alloc((p), (n)+sizeof(plm_string_t));	\
+		if (str) {											\
+			str->s_str = (char *)str + sizeof(plm_string_t);\
+			str->s_len = (n);								\
+			memcpy(str->s_str, (s), (n));					\
+		}													\
+		*(pp) = str;										\
+	} while (0)
 
 int plm_strdup(plm_string_t *out, plm_string_t *in);
 int plm_strcmp(plm_string_t *s1, plm_string_t *s2);

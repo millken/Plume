@@ -27,6 +27,6 @@ AC_FUNC_MALLOC
 AC_CHECK_FUNCS([localtime_r memset socket strchr])
 
 AC_OUTPUT(Makefile src/Makefile src/base/Makefile src/lib/Makefile 
-				   src/plugin/Makefile)
+				   src/plugin/Makefile src/plugin/http/Makefile)
 
 AC_OUTPUT

@@ -32,22 +32,27 @@ static int
 plm_http_on_url(struct http_parser *, const char *, size_t);
 
 static int
-plm_http_on_status_complete(struct plm_http_parser *);
+plm_http_on_status_complete(struct http_parser *);
 
 static int
-plm_http_on_header_field(struct plm_http_parser *, const char *, size_t);
+plm_http_on_header_field(struct http_parser *, const char *, size_t);
 
 static int
-plm_http_on_header_value(struct plm_http_parser *, const char *, size_t);
+plm_http_on_header_value(struct http_parser *, const char *, size_t);
 
 static int
-plm_http_on_headers_complete(struct plm_http_parser *);
+plm_http_on_headers_complete(struct http_parser *);
 
 static int
-plm_http_on_body(struct plm_http_parser *, const char *, size_t);
+plm_http_on_body(struct http_parser *, const char *, size_t);
 
 static int
 plm_http_on_msg_complete(struct http_parser *);
+
+static uint32_t plm_http_field_key(void *, uint32_t);
+static int plm_http_field_cmp(void *, void *);
+static void *plm_http_alloc_bucket(size_t, void *);
+static void plm_http_free_bucket(void *, void *);
 
 static struct http_parser_settings parser_settings = {
 	plm_http_on_msg_begin,
@@ -60,8 +65,9 @@ static struct http_parser_settings parser_settings = {
 	plm_http_on_msg_complete
 };
 
-/* init http structure with specifiy type */	
-void plm_http_init(struct plm_http *http, enum plm_http_type type)
+/* init http structure, return 0 on success, else -1 */	
+int plm_http_init(struct plm_http *http, enum plm_http_type type,
+				   struct plm_mempool *pool)
 {
 	enum http_parser_type ptype;
 
@@ -73,6 +79,15 @@ void plm_http_init(struct plm_http *http, enum plm_http_type type)
 		ptype = HTTP_BOTH;
 
 	http_parser_init(&http->h_parser, ptype);
+	http->h_pool = pool;
+	http->h_header_done = http->h_status_line_done = 0;
+	memset(&http->h_url, 0, sizeof(http->h_url));
+	http->h_last_key = http->h_last_value = NULL;
+	http->h_last_state = PLM_LAST_NONE;
+	
+	return plm_hash_init(&http->h_fields, 26,
+						 plm_http_field_key, plm_http_field_cmp,
+						 plm_http_alloc_bucket, plm_http_free_bucket, http);
 }
 
 /* parse http
@@ -88,10 +103,165 @@ void plm_http_init(struct plm_http *http, enum plm_http_type type)
 int plm_http_parse(size_t *parsed, struct plm_http *http,
 				   const char *buf, size_t len)
 {
-	size_t n = http_parser_execute(&http->h_parser, &parser_settings, buf, len);
-	if (n != len) {
-		/* the header must be pared done */
-		if (!http->h_header_done)
-			return (PLM_HTTP_PARSE_ERROR);
+	int rc;
+	size_t n;
+
+	n = http_parser_execute(&http->h_parser, &parser_settings, buf, len);
+
+	if (!http->h_header_done) {
+		if (n == len)
+			rc = PLM_HTTP_PARSE_AGAIN;
+		else
+			rc = PLM_HTTP_PARSE_ERROR;
+	} else {
+		rc = PLM_HTTP_PARSE_DONE;
 	}
+
+	*parsed = n;
+	return (rc);
+}
+
+const char *plm_http_parse_error(struct plm_http *http)
+{
+	return http_errno_description(HTTP_PARSER_ERRNO(&http->h_parser));
+}
+
+int plm_http_parser_request_line_done(struct plm_http *http)
+{
+	int done = 0;
+	
+	if (http->h_parser.type == HTTP_REQUEST) {
+		unsigned short maj, min;
+
+		maj = http->h_parser.http_major;
+		min = http->h_parser.http_minor;
+
+		switch (maj) {
+		case 0:
+			if (min == 9)
+				done = 1;
+			break;
+
+		case 1:
+			if (min == 0 || min == 1)
+				done = 1;
+			break;
+		}
+	}
+
+	return (done);
+}
+
+int plm_http_on_msg_begin(struct http_parser *parser)
+{
+	return (0);
+}
+
+int plm_http_on_url(struct http_parser *parser,
+					const char *buf, size_t len)
+{
+	struct plm_http *http;
+
+	http = (struct plm_http *)parser;
+	plm_strassign(&http->h_url, buf, len, http->h_pool);
+	return (0);
+}
+
+int plm_http_on_status_complete(struct http_parser *parser)
+{
+	struct plm_http *http;
+
+	http = (struct plm_http *)parser;
+	http->h_status_line_done = 1;
+	return (0);
+}
+
+int plm_http_on_header_field(struct http_parser *parser,
+							 const char *buf, size_t len)
+{
+	struct plm_http *http;
+
+	http = (struct plm_http *)parser;
+	if (http->h_last_state != PLM_LAST_KEY)
+		plm_stralloc(&http->h_last_key, buf, len, http->h_pool);
+	else
+		plm_strappend(http->h_last_key, buf, len, http->h_pool);
+
+	http->h_last_state = PLM_LAST_KEY;
+	return (0);
+}
+
+int plm_http_on_header_value(struct http_parser *parser,
+							 const char *buf, size_t len)
+{
+	int rc = 0;
+	struct plm_http *http;
+	struct plm_http_field *field;
+
+	http = (struct plm_http *)parser;
+	if (http->h_last_state == PLM_LAST_KEY) {
+		field = (struct plm_http_field *)
+			plm_mempool_alloc(http->h_pool, sizeof(struct plm_http_field));
+		if (field) {
+			plm_stralloc(&http->h_last_value, buf, len, http->h_pool);
+			field->hf_key = http->h_last_key;
+			field->hf_value = http->h_last_value;
+			plm_hash_insert(&http->h_fields, &field->hf_node);
+		} else {
+			rc = -1;
+		}
+	} else {
+		/* the field key had been insert into hash tabel */
+		plm_strappend(http->h_last_key, buf, len, http->h_pool);
+	}
+
+	http->h_last_state = PLM_LAST_VALUE;
+	return (rc);
+}
+
+int plm_http_on_headers_complete(struct http_parser *parser)
+{
+	struct plm_http *http;
+
+	http = (struct plm_http *)parser;
+	http->h_header_done = 1;
+	return (1);
+}
+
+int plm_http_on_body(struct http_parser *parser,
+					 const char *buf, size_t len)
+{
+	return (0);
+}
+
+int plm_http_on_msg_complete(struct http_parser *parser)
+{
+	return (0);
+}
+
+uint32_t plm_http_field_key(void *data, uint32_t max)
+{
+	plm_string_t *key;
+
+	key = (plm_string_t *)data;
+	return (key->s_str[0] % max);
+}
+
+int plm_http_field_cmp(void *v1, void *v2)
+{
+	plm_string_t *value1, *value2;
+
+	value1 = (plm_string_t *)v1;
+	value2 = (plm_string_t *)v2;
+
+	return plm_strcmp(value1, value2);
+}
+
+void *plm_http_alloc_bucket(size_t sz, void *data)
+{
+	return plm_mempool_alloc(((struct plm_http *)data)->h_pool, sz);
+}
+
+void plm_http_free_bucket(void *ptr, void *data)
+{
 }

@@ -26,6 +26,13 @@
 #ifndef _PLM_HTTP_PROTO_H
 #define _PLM_HTTP_PROTO_H
 
+#include <stdint.h>
+
+#include "plm_hash.h"
+#include "plm_string.h"
+#include "plm_mempool.h"
+#include "http_parser.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -38,26 +45,42 @@ enum plm_http_type {
 	PLM_HTTP_NONE,
 	PLM_HTTP_REQUEST,
 	PLM_HTTP_RESPONSE
+};
+
+enum plm_last_state {
+	PLM_LAST_NONE,
+	PLM_LAST_KEY,
+	PLM_LAST_VALUE
+};
+
+struct plm_http_field {
+	struct plm_hash_node hf_node;
+	#define hf_key hf_node.hn_key
+	#define hf_value hf_node.hn_value
 };	
 
 struct plm_http {
 	struct http_parser h_parser;
 	
-	/* set when parsed http header done */
-	unsigned char h_header_done : 1;
-	
-	/* set when content_length set in header */
-	unsigned char h_has_body : 1;
+	uint8_t h_header_done : 1;
+	uint8_t h_status_line_done : 1;
 
-	/* set when received all data of body */
-	unsigned char h_body_done : 1;
+	plm_string_t h_url;
+	struct plm_hash h_fields;
+	struct plm_mempool *h_pool;
+	plm_string_t *h_last_key;
+	plm_string_t *h_last_value;
+	int8_t h_last_state;
 
-	/* set when parsed all message */
-	unsigned char h_msg_complete : 1;
+	#define h_maj_version h_parser.http_major
+	#define h_min_version h_parser.http_minor
+	#define h_status_code h_parser.status_code
+	#define h_method h_parser.method
 };
 
-/* init http structure with specifiy type */	
-void plm_http_init(struct plm_http *http, enum plm_http_type type);	
+/* init http structure, return 0 on success, else -1 */	
+int plm_http_init(struct plm_http *http, enum plm_http_type type,
+				   struct plm_mempool *pool);
 
 /* parse http
  * @parsed -- bytes parsed
@@ -73,7 +96,12 @@ int plm_http_parse(size_t *parsed, struct plm_http *http,
 				   const char *buf, size_t len);
 
 /* return a static buffer string on success, else NULL */	
-const char *plm_http_parse_error(sturct plm_http *http);	
+const char *plm_http_parse_error(struct plm_http *http);
+
+#define plm_http_parse_status_line_done(http) (http)->h_status_line_done
+#define plm_http_parse_header_done(http) (http)->h_header_done
+
+int plm_http_parser_request_line_done(struct plm_http *http);
 
 #ifdef __cplusplus
 }

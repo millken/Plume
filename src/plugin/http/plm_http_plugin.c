@@ -24,8 +24,10 @@
  */
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "plm_plugin.h"
+#include "plm_comm.h"
 #include "plm_event.h"
 #include "plm_lookaside_list.h"
 #include "plm_http_request.h"
@@ -79,7 +81,7 @@ struct plm_plugin http_plugin = {
 	plm_http_on_work_proc_exit,
 	plm_http_on_work_thrd_start,
 	plm_http_on_work_thrd_exit,
-	echo_cmds
+	http_cmds
 };
 
 void *plm_http_ctx_create(void *parent)
@@ -119,26 +121,26 @@ int plm_http_port_set(void *data, plm_dlist_t *param_list)
 int plm_http_listen_set(void *ctx, plm_dlist_t *param_list)
 {
 	int n;
-	struct plm_http_ctx *ctx;
+	struct plm_http_ctx *http_ctx;
 	struct plm_cmd_param *param;
 
 	n = PLM_DLIST_LEN(param_list);
-	ctx = (struct plm_http_ctx *)data;
+	http_ctx = (struct plm_http_ctx *)ctx;
 	if (n != 1 || n != 2) {
 		plm_log_syslog("the number of http_listen param is wrong");
 		return (-1);
 	}
 
-	param = (struct plm_http_param *)PLM_DLIST_FRONT(param_list);
-	plm_strdup(&ctx->hc_addr, &param->cp_data);
-	if (!ctx->hc_addr.s_str) {
+	param = (struct plm_cmd_param *)PLM_DLIST_FRONT(param_list);
+	plm_strdup(&http_ctx->hc_addr, &param->cp_data);
+	if (!http_ctx->hc_addr.s_str) {
 		plm_log_syslog("strdup failed, memory emergent");
 		return (-1);
 	}
 
 	if (n == 2) {
-		param = (struct plm_http_param *)PLM_DLIST_NEXT(&param->cp_node);
-		ctx->hc_backlog = plm_str2i(&param->cp_data);
+		param = (struct plm_cmd_param *)PLM_DLIST_NEXT(&param->cp_node);
+		http_ctx->hc_backlog = plm_str2i(&param->cp_data);
 	}
 
 	return (0);
@@ -157,16 +159,16 @@ int plm_http_on_work_proc_start(struct plm_ctx_list *cl)
 	struct plm_http_ctx *ctx;	
 
 	ctx = (struct plm_http_ctx *)PLM_CTX_LIST_GET_POINTER(cl);
-	plm_lookaside_list_init(&ctx->hc_conn_pool, &sp.sp_maxfd,
+	plm_lookaside_list_init(&ctx->hc_conn_pool, sp.sp_maxfd,
 							sizeof(struct plm_http_conn), sp.sp_tag,
 							malloc, free);
-	plm_lookaside_list_enable(&ctx->conn_pool,
+	plm_lookaside_list_enable(&ctx->hc_conn_pool,
 							  sp.sp_zeromem, sp.sp_tagcheck, sp.sp_thrdn > 1);
 	ctx->hc_fd = plm_comm_open(PLM_COMM_TCP, NULL, 0, 0, ctx->hc_port,
-							   ctx->hc_addr.s_str, ctx->hc_backlog, 1);
+							   ctx->hc_addr.s_str, ctx->hc_backlog, 1, 1);
 	if (ctx->hc_fd < 0) {
 		plm_log_syslog("can't open http plugin listen fd: %s:%d",
-					   ctx->hc_addr._str, ctx->hc_port);
+					   ctx->hc_addr.s_str, ctx->hc_port);
 	} else {
 		err = plm_event_io_read(ctx->hc_fd, ctx, plm_http_accept);
 		if (err)

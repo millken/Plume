@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <stdint.h>
 
 #include "plm_mempool.h"
 #include "plm_lookaside_list.h"
@@ -41,26 +42,15 @@ extern "C" {
 
 struct plm_http_ctx {
 	int hc_fd;
-
 	plm_string_t hc_addr;
 	short hc_port;
-
 	int hc_backlog;
-
 	struct plm_lookaside_list hc_conn_pool;
-
-	/* some sub block, such as location */
-	plm_dlist_t hc_sub_block;
-};
-
-struct plm_http_request {
-	struct plm_http_request *hr_next;
-	struct plm_http hr_http;
 };
 
 struct plm_http_conn {
 	int hc_fd;
-	struct plm_http_request hc_request;
+	struct plm_http_request *hc_request;
 	struct plm_mempool hc_pool;
 	struct sockaddr_in hc_addr;
 	struct plm_comm_close_handler hc_close_handler;

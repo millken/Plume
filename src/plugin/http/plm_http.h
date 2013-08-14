@@ -78,6 +78,31 @@ struct plm_http {
 	#define h_method h_parser.method
 };
 
+struct plm_http_request {
+	/* parser */
+	struct plm_http hr_http;
+	struct plm_http_request *hr_next;
+
+	/* request pack buffer */
+	plm_string_t hr_reqbuf;
+	size_t hr_offset;
+	plm_string_t hr_bodybuf;
+
+	/* request hostname */
+	plm_string_t hr_host;
+	unsigned short hr_port;
+
+	/* struct plm_http_conn * */
+	void *hr_conn;
+
+	struct plm_http_forward *hr_forward;
+	
+	uint8_t hr_complete : 1;
+	uint8_t hr_keepalive : 1;
+	uint8_t hr_hasbody : 1;
+	uint8_t hr_send_header_done : 1;
+};	
+
 /* init http structure, return 0 on success, else -1 */	
 int plm_http_init(struct plm_http *http, enum plm_http_type type,
 				   struct plm_mempool *pool);
@@ -94,6 +119,8 @@ int plm_http_init(struct plm_http *http, enum plm_http_type type,
  */	
 int plm_http_parse(size_t *parsed, struct plm_http *http,
 				   const char *buf, size_t len);
+
+const char *plm_http_method(struct plm_http *http);
 
 /* return a static buffer string on success, else NULL */	
 const char *plm_http_parse_error(struct plm_http *http);

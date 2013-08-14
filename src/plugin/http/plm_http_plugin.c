@@ -39,6 +39,11 @@ static void *plm_http_ctx_create(void *);
 static void plm_http_ctx_destroy(void *);
 static int plm_http_port_set(void *, plm_dlist_t *);
 static int plm_http_listen_set(void *, plm_dlist_t *);
+static int plm_http_upstream_set(void *, plm_dlist_t *);
+static int plm_http_upstream_backend_set(void *, plm_dlist_t *);
+
+/* shared from plume main context */
+static struct plm_share_param sp;
 
 struct plm_plugin http_plugin;
 static struct plm_cmd http_cmds[] = {
@@ -146,8 +151,6 @@ int plm_http_listen_set(void *ctx, plm_dlist_t *param_list)
 	return (0);
 }
 
-static struct plm_share_param sp;
-
 void plm_http_set_main_conf(struct plm_share_param *param)
 {
 	memcpy(&sp, param, sizeof(sp));
@@ -185,15 +188,11 @@ void plm_http_on_work_proc_exit(struct plm_ctx_list *cl)
 	plm_comm_close(ctx->hc_fd);
 }
 
-int plm_http_on_work_thrd_start(struct plm_ctx_list *cl)
+int plm_http_on_work_thrd_start(struct plm_ctx_list *)
 {
 	return (0);
 }
 
-void plm_http_on_work_thrd_exit(struct plm_ctx_list *cl)
+void plm_http_on_work_thrd_exit(struct plm_ctx_list *)
 {	
 }
-
-
-
-

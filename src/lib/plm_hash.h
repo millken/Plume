@@ -74,6 +74,9 @@ void plm_hash_delete(struct plm_hash *hash, void *key);
 /* remove the node with specifiy key and value */	
 void plm_hash_delete2(struct plm_hash *hash, void *key, void *value);
 
+void plm_hash_foreach(struct plm_hash *hash, void *data,
+					  void (*fn)(void *key, void *value, void *data));	
+
 /* destroy hash and free the bucket */
 #define plm_hash_destroy(hash)					\
 	do {										\

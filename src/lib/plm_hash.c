@@ -104,3 +104,39 @@ void plm_hash_delete2(struct plm_hash *hash, void *key, void *value)
 	PLM_LIST_REMOVE_IF(&bucket->hb_list, value_cmp, value);
 	hash->h_len -= old_len - new_len;
 }
+
+struct plm_hash_helper {
+	void (*fn)(void *, void *, void *);
+	void *data;
+};
+
+static void plm_hash_foreach_helper(void *node, void *data)
+{
+	struct plm_hash_node *hash_node;
+	struct plm_hash_helper *helper;
+
+	hash_node = (struct plm_hash_node *)node;
+	helper = (struct plm_hash_helper *)data;
+	helper->fn(helper->data, hash_node->hn_key, hash_node->hn_value);
+}
+
+void plm_hash_foreach(struct plm_hash *hash, void *data,
+					  void (*fn)(void *key, void *value, void *data))
+{
+	int i;
+	struct plm_hash_helper helper;
+
+	helper.data = data;
+	helper.fn = fn;
+	
+	for (i = 0; i < hash->h_bucket_num; i++) {
+		struct plm_hash_bucket *bucket;
+
+		bucket = &hash->h_bucket[i];
+		if (PLM_LIST_LEN(&bucket->hb_list) == 0)
+			continue;
+
+		PLM_LIST_FOREACH(&bucket->hb_list, plm_hash_foreach_helper, &helper);
+	}
+}
+

@@ -23,59 +23,34 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _PLM_HTTP_PROTO_H
-#define _PLM_HTTP_PROTO_H
+#ifndef _PLM_HTTP_FORWARD_H
+#define _PLM_HTTP_FORWARD_H
 
-#include "plm_string.h"
-#include "plm_list.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define PLM_HTTP_PARSE_DONE 0
-#define PLM_HTTP_PARSE_AGAIN 1	
+struct plm_http_forward {
+	/* orign server */
+	struct in_addr hf_addr;
+	unsigned short hf_port;
+	uint16_t hf_send_header : 1;
+	uint16_t hf_send_body : 1;
+	uint16_t hf_post_recv : 1;
 
-typedef enum {
-	PLM_METHOD_GET,
-	PLM_METHOD_HEAD,
-	PLM_METHOD_POST,
-	PLM_METHOD_PUT,
-	PLM_METHOD_CONNECT,
-	PLM_METHOD_TRACE,
-	PLM_METHOD_END
-} plm_method_t;
-
-typedef enum {
-	PLM_PROTO_HTTP,
-	PLM_PROTO_END
-} plm_proto_t;
-
-struct plm_http_comm {
-	/* only request */
-	plm_method_t hc_method;
-	/* only response */
-	int hc_status;
-	plm_proto_t hc_proto;
-	struct {
-		unsigned char hc_maj_version;
-		unsigned char hc_min_version;
-	};
-
-	/* internal state */
-	int hc_parser_state;
+	int hf_fd;
+	void *hf_request;
+	void (*hf_fn)(void *, int);
+	void *hf_data;
 };
 
-typedef void (*parser_delegate)(const char *, int, struct plm_http_comm *);	
-	
-void plm_http_proto_delegate_set(parser_delegate on_url,
-								 parser_delegate on_key,
-								 parser_delegate on_value);
+void plm_http_forward_start(struct plm_http_request *request, void *data,
+							void (*fn)(void *, int));
 
-void plm_http_proto_init(struct plm_http_comm *http);
-	
-int plm_http_proto_parse(int *bytes_parsed, struct plm_http_comm *http,
-						 const char *buf, int n);	
+void plm_http_forward_body(struct plm_http_request *request, void *data,
+						   void (*fn)(void *, int));	
 
 #ifdef __cplusplus
 }

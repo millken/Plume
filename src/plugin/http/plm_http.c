@@ -121,6 +121,11 @@ int plm_http_parse(size_t *parsed, struct plm_http *http,
 	return (rc);
 }
 
+const char *plm_http_method(struct plm_http *http)
+{
+	return http_method_str((enum http_method)http->h_parser.method);
+}
+
 const char *plm_http_parse_error(struct plm_http *http)
 {
 	return http_errno_description(HTTP_PARSER_ERRNO(&http->h_parser));

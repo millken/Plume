@@ -36,14 +36,12 @@
 
 static void plm_http_read_header(void *, int);
 static void plm_http_read_body(void *, int);
-static void plm_http_write_header(void *, int);
-static void plm_http_write_body(void *, int);
 static void plm_http_request_chain_process(struct plm_http_request *);
-
-static struct plm_http_conn *plm_http_conn_alloc(struct plm_http_ctx *,
-												 struct sockaddr_in *,
-												 int);
+static struct plm_http_conn *
+plm_http_conn_alloc(struct plm_http_ctx *, struct sockaddr_in *, int);
 static void plm_http_conn_free(void *);
+static struct plm_http_request *plm_http_request_alloc();
+static void plm_http_request_free(void *);
 
 void plm_http_accept(void *data, int fd)
 {
@@ -88,6 +86,10 @@ void plm_http_accept(void *data, int fd)
 	}   
 }
 
+void plm_http_reply(void *data, int fd)
+{
+}
+
 struct plm_http_conn *plm_http_conn_alloc(struct plm_http_ctx *ctx,
 										  struct sockaddr_in *addr,
 										  int fd)
@@ -130,10 +132,29 @@ void plm_http_conn_free(void *data)
 	}
 }
 
+static int
+plm_http_request_parse(struct plm_http_request **pp, size_t *parsed,
+					   size_t n, struct plm_http_conn *conn)
+{
+	int rc;
+	struct plm_http_request *req;
+
+	req = *pp;
+	if (!req || req->hr_complete) {
+		req = plm_http_request_alloc(conn);
+		*pp = req;
+	}
+
+	req->hr_next = conn->hc_request;
+	conn->hc_request = req;
+	return plm_http_parse(parsed, &req->hr_http, conn->hc_buf, n);
+}
+
 void plm_http_read_header(void *data, int fd)
 {
 	int header_done = 0;
 	struct plm_http_conn *conn;
+	struct plm_http_request *request;
 
 	conn = (struct plm_http_conn *)data;
 	for (;;) {
@@ -144,9 +165,12 @@ void plm_http_read_header(void *data, int fd)
 						  conn->hc_size - conn->hc_offset);
 		if (n == EWOULDBLOCK)
 			break;
+		
+		if (n == 0) {
+			/* EOF */
+		}
 
-		rc = plm_http_parse(&parsed, &conn->hc_request.hr_http,
-							conn->hc_buf, n);
+		rc = plm_http_request_parse(&request, &parsed, n, conn);
 		if (rc == PLM_HTTP_PARSE_DONE) {
 			header_done = 1;
 			break;
@@ -156,16 +180,20 @@ void plm_http_read_header(void *data, int fd)
 		}
 		
 		conn->hc_offset = n - parsed;
-		memmove(conn->hc_buf, conn->hc_buf + parsed, conn->hc_offset);
+		if (parsed != n)
+			memmove(conn->hc_buf, conn->hc_buf + parsed, conn->hc_offset);
 	}
 
 	if (header_done) {
-		plm_http_request_chain_process(&conn->hc_request);
-		if (plm_event_io_read(fd, data, plm_http_read_body)) {
-			plm_comm_close(fd);
-			plm_log_write(PLM_LOG_FATAL, "plm_event_io_read failed: %s",
-						  strerror(errno));
+		if (request->hr_hasbody) {
+			if (plm_event_io_read(fd, data, plm_http_read_body)) {
+				plm_comm_close(fd);
+				plm_log_write(PLM_LOG_FATAL, "plm_event_io_read failed: %s",
+							  strerror(errno));
+				return;
+			}
 		}
+		plm_http_request_chain_process(&request);		
 	} else {
 		if (plm_event_io_read(fd, data, plm_http_read_header)) {
 			plm_comm_close(fd);
@@ -175,10 +203,119 @@ void plm_http_read_header(void *data, int fd)
 	}
 }
 
-void plm_http_read_body(void *data, int fd)
+static void plm_http_body_complete(void *, int);
+static void plm_http_read_body(void *data, int fd)
 {
+	int n;
+	struct plm_http_conn *conn;
+	struct plm_http_request *request;
+
+	conn = (struct plm_http_conn *)data;
+	n = plm_comm_read(fd, conn->hc_buf, conn->hc_size);
+	if (n == 0) {
+		/* client closed */
+		return;
+	}
+	
+	request = conn->hc_request;
+	request->hr_bodybuf.s_str = conn->hc_buf;
+	request->hr_bodybuf.s_len = conn->hc_size;
+
+	if (request->hr_send_header_done)
+		plm_http_forward_body(request, request, plm_http_body_complete);
+}
+
+static void plm_http_buf_pack(void *key, void *value, void *data)
+{
+	struct plm_http_request *request;
+	struct plm_http_conn *conn;	
+	struct plm_mempool *pool;
+	plm_string_t *k, *v, *buf;
+
+	request = (struct plm_http_request *)data;
+	conn = (struct plm_http_conn *)request->hr_conn;
+	pool = &conn->hc_pool;
+	buf = &request->hr_reqbuf;
+	k = (plm_string_t *)key;
+	v = (plm_string_t *)value;
+
+	plm_strappend_field(buf, k, v, pool);
+}
+
+static int plm_http_request_pack(struct plm_http_request *request)
+{
+	struct plm_http_conn *conn;	
+	struct plm_mempool *pool;
+	plm_string_t *buf;
+	plm_string_t *url;
+
+	request = (struct plm_http_request *)data;
+	conn = (struct plm_http_conn *)request->hr_conn;
+	pool = &conn->hc_pool;
+	buf = &request->hr_reqbuf;
+	url = &request->hr_http.h_url;
+
+	/* request line */
+	plm_strappend2(buf, plm_http_method(&request->hr_http), pool);
+	plm_strappend(buf, " ", 1, pool);
+	plm_strappend(buf, url->s_str, url->s_len, pool);
+	plm_strappend(buf, " ", 1, pool);
+	plm_strappend2(buf, http_verion, pool);
+	plm_strappend(buf, "\r\n", 2, pool);
+
+	/* field */
+	plm_hash_foreach(&request->hr_http.h_fields, request, plm_http_buf_pack);
+
+	/* end \r\n */
+	plm_strappend(buf, "\r\n", 2, pool);
+	return (0);
+}
+
+void plm_http_body_complete(void *data, int state)
+{
+	int err;
+	struct plm_http_request *request;
+	struct plm_http_conn *con;
+	
+	if (state == -1) {
+		/* error */
+		return;
+	}
+
+	request = (struct plm_http_request *)data;
+	conn = (struct plm_http_conn *)request->hr_conn;
+
+	err = plm_event_io_read(conn->hc_fd, conn, plm_http_read_body);
+	if (err) {
+		/* error */
+	}
+}
+
+static void plm_http_request_complete(void *data, int state)
+{
+	plm_string_t *buf;
+	struct plm_http_request *request;
+	
+	if (state == -1) {
+		/* error */
+		return;
+	}
+
+	request->hr_send_header_done = 1;
+	request = (struct plm_http_request *)data;
+	buf = &request->hr_bodybuf;
+	if (buf->s_len > 0) {
+		request->hr_offset = 0;
+		plm_http_forward_body(request, data, plm_http_body_complete);
+	}
 }
 
 void plm_http_request_chain_process(struct plm_http_request *request)
 {
+	if (!plm_http_request_pack(request)) {
+		plm_http_forward_start(request, request, plm_http_request_complete);
+	} else {
+		plm_log_write(PLM_LOG_FATAL, "plm_http_request_pack failed");
+		plm_http_request_send_complete(request, -1);
+	}
 }

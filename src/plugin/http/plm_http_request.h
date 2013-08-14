@@ -32,6 +32,8 @@ extern "C" {
 
 void plm_http_accept(void *data, int fd);
 
+void plm_http_reply(void *data, int fd);	
+
 #ifdef __cplusplus
 }
 #endif

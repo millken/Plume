@@ -27,6 +27,7 @@
 #define _PLM_HTTP_FORWARD_H
 
 #include <stdint.h>
+#include "plm_http_response.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,6 +42,9 @@ struct plm_http_forward {
 	uint16_t hf_post_recv : 1;
 
 	int hf_fd;
+	char *hf_buf;
+	size_t hf_size;
+	size_t hf_offset;
 	void *hf_request;
 	void (*hf_fn)(void *, int);
 	void *hf_data;

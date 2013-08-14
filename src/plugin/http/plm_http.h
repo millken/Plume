@@ -88,6 +88,9 @@ struct plm_http_request {
 	size_t hr_offset;
 	plm_string_t hr_bodybuf;
 
+	/* reply */
+	size_t hr_reply_offset;
+
 	/* request hostname */
 	plm_string_t hr_host;
 	unsigned short hr_port;
@@ -101,7 +104,11 @@ struct plm_http_request {
 	uint8_t hr_keepalive : 1;
 	uint8_t hr_hasbody : 1;
 	uint8_t hr_send_header_done : 1;
-};	
+};
+
+struct plm_http_response {
+	struct plm_http hr_http;
+};
 
 /* init http structure, return 0 on success, else -1 */	
 int plm_http_init(struct plm_http *http, enum plm_http_type type,

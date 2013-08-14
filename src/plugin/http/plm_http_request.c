@@ -31,7 +31,9 @@
 #include "plm_event.h"
 #include "plm_log.h"
 #include "plm_buffer.h"
+#include "plm_http.h"
 #include "plm_http_plugin.h"
+#include "plm_http_response.h"
 #include "plm_http_request.h"
 
 static void plm_http_read_header(void *, int);
@@ -40,8 +42,9 @@ static void plm_http_request_chain_process(struct plm_http_request *);
 static struct plm_http_conn *
 plm_http_conn_alloc(struct plm_http_ctx *, struct sockaddr_in *, int);
 static void plm_http_conn_free(void *);
-static struct plm_http_request *plm_http_request_alloc();
-static void plm_http_request_free(void *);
+
+static struct plm_http_request *
+plm_http_request_alloc(struct plm_http_conn *conn);
 
 void plm_http_accept(void *data, int fd)
 {
@@ -88,6 +91,49 @@ void plm_http_accept(void *data, int fd)
 
 void plm_http_reply(void *data, int fd)
 {
+	int n;
+	char *buf;
+	size_t bufsize;
+	struct plm_http_conn *conn;
+	struct plm_http_request *request;
+	struct plm_http_forward *forward;
+
+	conn = (struct plm_http_conn *)data;
+	request = conn->hr_request;
+	forward = (struct plm_http_forward *)request->hr_forward;
+
+	if (forward->hf_offset == 0) {
+		plm_comm_close(fd);
+		return;
+	}
+
+	buf = forward->hf_buf;
+	bufsize = forward->hf_offset - request->hr_reply_offset;
+	n = plm_comm_write(fd, buf, bufsize);
+	if (n < 0) {
+		int err = 0;
+		
+		if (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR)
+			err = plm_event_io_write(fd, data, plm_http_reply);
+		else
+			err = -1;
+
+		if (err) {
+			plm_log_write(PLM_LOG_FATAL, "plm_comm_write failed: %s",
+						  strerror(errno));
+			plm_comm_close(fd);
+		}
+		return;
+	}
+
+	request->hr_reply_offset += n;
+	if (request->hr_reply_offset < forward->hf_offset) {
+		plm_event_io_write(fd, data, plm_http_reply);
+		return;
+	}
+
+	request->hr_reply_offset = forward->hf_offset = 0;
+	plm_http_response_read(forward, forward->hf_fd);
 }
 
 struct plm_http_conn *plm_http_conn_alloc(struct plm_http_ctx *ctx,
@@ -319,3 +365,17 @@ void plm_http_request_chain_process(struct plm_http_request *request)
 		plm_http_request_send_complete(request, -1);
 	}
 }
+
+struct plm_http_request *plm_http_request_alloc(struct plm_http_conn *conn)
+{
+	struct plm_mempool *pool;
+	struct plm_http_request *request;
+
+	pool = conn->hc_pool;
+	request = plm_mempool_alloc(pool, sizeof(*request));
+	if (request)
+		memset(request, 0, sizeof(*request));
+	
+	return (request);
+}
+

@@ -31,6 +31,7 @@
 #include <sys/un.h>
 #include <stdint.h>
 
+#include "plm_comm.h"
 #include "plm_mempool.h"
 #include "plm_lookaside_list.h"
 #include "plm_dlist.h"
@@ -52,7 +53,7 @@ struct plm_http_conn {
 	struct plm_http_request *hc_request;
 	struct plm_mempool hc_pool;
 	struct sockaddr_in hc_addr;
-	struct plm_comm_close_handler hc_close_handler;
+	struct plm_comm_close_handler hc_cch;
 	
 	int hc_fd;
 	char *hc_buf;

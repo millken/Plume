@@ -23,6 +23,8 @@
  * SUCH DAMAGE.
  */
 
+#include <string.h>
+
 #include "plm_http.h"
 
 static int
@@ -168,7 +170,7 @@ int plm_http_on_url(struct http_parser *parser,
 	struct plm_http *http;
 
 	http = (struct plm_http *)parser;
-	plm_strassign(&http->h_url, buf, len, http->h_pool);
+	plm_strzassign(&http->h_url, buf, len, http->h_pool);
 	return (0);
 }
 
@@ -188,9 +190,9 @@ int plm_http_on_header_field(struct http_parser *parser,
 
 	http = (struct plm_http *)parser;
 	if (http->h_last_state != PLM_LAST_KEY)
-		plm_stralloc(&http->h_last_key, buf, len, http->h_pool);
+		plm_strzalloc(&http->h_last_key, buf, len, http->h_pool);
 	else
-		plm_strappend(http->h_last_key, buf, len, http->h_pool);
+		plm_strzappend(http->h_last_key, buf, len, http->h_pool);
 
 	http->h_last_state = PLM_LAST_KEY;
 	return (0);
@@ -208,7 +210,7 @@ int plm_http_on_header_value(struct http_parser *parser,
 		field = (struct plm_http_field *)
 			plm_mempool_alloc(http->h_pool, sizeof(struct plm_http_field));
 		if (field) {
-			plm_stralloc(&http->h_last_value, buf, len, http->h_pool);
+			plm_strzalloc(&http->h_last_value, buf, len, http->h_pool);
 			field->hf_key = http->h_last_key;
 			field->hf_value = http->h_last_value;
 			plm_hash_insert(&http->h_fields, &field->hf_node);
@@ -217,7 +219,7 @@ int plm_http_on_header_value(struct http_parser *parser,
 		}
 	} else {
 		/* the field key had been insert into hash tabel */
-		plm_strappend(http->h_last_key, buf, len, http->h_pool);
+		plm_strzappend(http->h_last_key, buf, len, http->h_pool);
 	}
 
 	http->h_last_state = PLM_LAST_VALUE;
@@ -259,7 +261,7 @@ int plm_http_field_cmp(void *v1, void *v2)
 	value1 = (plm_string_t *)v1;
 	value2 = (plm_string_t *)v2;
 
-	return plm_strcmp(value1, value2);
+	return strcasecmp((char *)value1->s_str, (char *)value2->s_str);
 }
 
 void *plm_http_alloc_bucket(size_t sz, void *data)

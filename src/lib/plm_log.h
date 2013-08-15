@@ -60,7 +60,7 @@ int plm_log_close();
 int plm_log_write(int level, const char *fmt, ...);
 
 /* native log */
-#define plm_log_syslog(fmt...) syslog(LOG_USER | LOG_ERR, fmt)
+void plm_log_syslog(const char *fmt, ...);	
 
 #ifdef __cplusplus
 }

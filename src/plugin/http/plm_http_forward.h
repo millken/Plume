@@ -27,6 +27,10 @@
 #define _PLM_HTTP_FORWARD_H
 
 #include <stdint.h>
+#include <arpa/inet.h>
+
+#include "plm_comm.h"
+#include "plm_http.h"
 #include "plm_http_response.h"
 
 #ifdef __cplusplus
@@ -35,8 +39,6 @@ extern "C" {
 
 struct plm_http_forward {
 	/* orign server */
-	struct in_addr hf_addr;
-	unsigned short hf_port;
 	uint16_t hf_send_header : 1;
 	uint16_t hf_send_body : 1;
 	uint16_t hf_post_recv : 1;
@@ -45,7 +47,10 @@ struct plm_http_forward {
 	char *hf_buf;
 	size_t hf_size;
 	size_t hf_offset;
-	void *hf_request;
+	struct plm_comm_close_handler hf_cch;
+	
+	struct plm_http_request *hf_request;
+
 	void (*hf_fn)(void *, int);
 	void *hf_data;
 };

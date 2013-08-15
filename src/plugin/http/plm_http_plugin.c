@@ -25,6 +25,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 #include "plm_plugin.h"
 #include "plm_comm.h"
@@ -96,7 +97,6 @@ void *plm_http_ctx_create(void *parent)
 	ctx = (struct plm_http_ctx *)malloc(sizeof(struct plm_http_ctx));
 	if (ctx) {
 		memset(ctx, 0, sizeof(struct plm_http_ctx));
-		PLM_DLIST_INIT(&ctx->hc_sub_block);
 		ctx->hc_backlog = DEF_BACKLOG;
 	}
 	return (ctx);
@@ -131,14 +131,14 @@ int plm_http_listen_set(void *ctx, plm_dlist_t *param_list)
 
 	n = PLM_DLIST_LEN(param_list);
 	http_ctx = (struct plm_http_ctx *)ctx;
-	if (n != 1 || n != 2) {
+	if (n != 1 && n != 2) {
 		plm_log_syslog("the number of http_listen param is wrong");
 		return (-1);
 	}
 
 	param = (struct plm_cmd_param *)PLM_DLIST_FRONT(param_list);
 	plm_strdup(&http_ctx->hc_addr, &param->cp_data);
-	if (!http_ctx->hc_addr.s_str) {
+	if (!http_ctx->hc_addr.s_str || -1 == inet_addr(param->cp_data.s_str)) {
 		plm_log_syslog("strdup failed, memory emergent");
 		return (-1);
 	}
@@ -188,11 +188,11 @@ void plm_http_on_work_proc_exit(struct plm_ctx_list *cl)
 	plm_comm_close(ctx->hc_fd);
 }
 
-int plm_http_on_work_thrd_start(struct plm_ctx_list *)
+int plm_http_on_work_thrd_start(struct plm_ctx_list *cl)
 {
 	return (0);
 }
 
-void plm_http_on_work_thrd_exit(struct plm_ctx_list *)
+void plm_http_on_work_thrd_exit(struct plm_ctx_list *cl)
 {	
 }

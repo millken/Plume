@@ -127,3 +127,12 @@ int plm_log_write(int level, const char *fmt, ...)
 
 	return (n);
 }
+
+void plm_log_syslog(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsyslog(LOG_USER | LOG_ERR, fmt, ap);
+	va_end(ap);
+}

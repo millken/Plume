@@ -56,10 +56,76 @@ typedef struct plm_string {
 		}															\
 	} while(0)
 
+#define plm_strzappend(s, a, n, p)									\
+	do {															\
+		const char *_old_mem = (s)->s_str;							\
+		size_t _new_len = (s)->s_len + (n) + 1;						\
+		char *_new_mem = (char *)plm_mempool_alloc((p), _new_len);	\
+		if (_new_mem) {												\
+			memcpy(_new_mem, _old_mem, (s)->s_len);					\
+			memcpy(_new_mem+(s)->s_len, (a), (n));					\
+			(s)->s_str = _new_mem;									\
+			(s)->s_len = _new_len;									\
+			(s)->s_str[(s)->s_len] = 0;								\
+		}															\
+	} while(0)
+
 #define plm_strappend2(s, a, p)					\
 	do {										\
 		size_t _len = strlen(a);				\
 		plm_strappend(s, a, _len, p);			\
+	} while (0)
+
+#define plm_strzappend2(s, a, p)				\
+	do {										\
+		size_t _len = strlen(a);				\
+		plm_strzappend(s, a, _len, p);			\
+	} while (0)
+	
+#define plm_strassign(s, a, n, p)							\
+	do {													\
+		char *_str = (char *)plm_mempool_alloc((p), (n));	\
+		if (_str) {											\
+			memcpy(_str, (a), (n));							\
+			(s)->s_str = _str;								\
+			(s)->s_len = (n);								\
+		}													\
+	} while(0)
+
+#define plm_strzassign(s, a, n, p)							\
+	do {													\
+		char *_str = (char *)plm_mempool_alloc((p), (n)+1);	\
+		if (_str) {											\
+			memcpy(_str, (a), (n));							\
+			(s)->s_str = _str;								\
+			(s)->s_len = (n);								\
+			(s)->s_str[(s)->s_len] = 0;						\
+		}													\
+	} while(0)
+
+#define plm_stralloc(pp, s, n, p)							\
+	do {													\
+	    plm_string_t *_str = (plm_string_t *)				\
+		plm_mempool_alloc((p), (n) + sizeof(plm_string_t));	\
+		if (_str) {											\
+			_str->s_str = (char *)_str + sizeof(plm_string_t);\
+			_str->s_len = (n);								\
+			memcpy(_str->s_str, (s), (n));					\
+		}													\
+		*(pp) = _str;										\
+	} while (0)
+
+#define plm_strzalloc(pp, s, n, p)							\
+	do {													\
+	    plm_string_t *_str = (plm_string_t *)				\
+		plm_mempool_alloc((p), 1+(n)+sizeof(plm_string_t));	\
+		if (_str) {											\
+			_str->s_str = (char *)_str + sizeof(plm_string_t);\
+			_str->s_len = (n);								\
+			memcpy(_str->s_str, (s), (n));					\
+			_str->s_str[_str->s_len] = 0;					\
+		}													\
+		*(pp) = _str;										\
 	} while (0)
 
 #define plm_strappend_field(s, k, v, p)		\
@@ -75,28 +141,6 @@ typedef struct plm_string {
 			memcpy(_mem + _len1 + _len2 + 2, "\r\n", 2);	\
 		} \
 	} while (0)	
-	
-#define plm_strassign(s, a, n, p)							\
-	do {													\
-		char *_str = (char *)plm_mempool_alloc((p), (n));	\
-		if (_str) {											\
-			memcpy(_str, (a), (n));							\
-			(s)->s_str = _str;								\
-			(s)->s_len = (n);								\
-		}													\
-	} while(0)
-
-#define plm_stralloc(pp, s, n, p)							\
-	do {													\
-	    plm_string_t *_str = (plm_string_t *)				\
-		plm_mempool_alloc((p), (n)+sizeof(plm_string_t));	\
-		if (_str) {											\
-			_str->s_str = (char *)_str + sizeof(plm_string_t);\
-			_str->s_len = (n);								\
-			memcpy(_str->s_str, (s), (n));					\
-		}													\
-		*(pp) = _str;										\
-	} while (0)
 
 int plm_strdup(plm_string_t *out, plm_string_t *in);
 int plm_strcmp(plm_string_t *s1, plm_string_t *s2);

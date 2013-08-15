@@ -337,7 +337,12 @@ plm_load_plugin(const plm_string_t *path, const plm_string_t *syb)
 		rc = dlsym(handle, symbol);
 		if (!rc)
 			err = dlerror();
+	} else {
+		err = dlerror();
 	}
+
+	if (err)
+		plm_log_syslog("plm_load_plugin failed: %s", err);
 
 	return (rc);
 }

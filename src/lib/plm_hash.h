@@ -65,14 +65,10 @@ int plm_hash_init(struct plm_hash *hash, uint32_t max_bucket,
 void plm_hash_insert(struct plm_hash *hash, struct plm_hash_node *node);
 
 /* find hash node by key returns 0 on success, else -1 */
-int plm_hash_find(struct plm_hash_node **pp, struct plm_hash *hash,
-				  void *key, void *value);
-
-/* delete all values with the same key */
-void plm_hash_delete(struct plm_hash *hash, void *key);
+int plm_hash_find(struct plm_hash_node **pp, struct plm_hash *hash, void *key);
 
 /* remove the node with specifiy key and value */	
-void plm_hash_delete2(struct plm_hash *hash, void *key, void *value);
+void plm_hash_delete(struct plm_hash *hash, void *key);
 
 void plm_hash_foreach(struct plm_hash *hash, void *data,
 					  void (*fn)(void *key, void *value, void *data));	

@@ -60,12 +60,11 @@ void plm_hash_insert(struct plm_hash *hash, struct plm_hash_node *node)
 }
 
 #define value_cmp(x, y) \
-	(n = hash->h_cmp(((struct plm_hash_node *)(x))->hn_value, y), n == 0)
+	(n = hash->h_cmp(((struct plm_hash_node *)(x))->hn_key, y), n == 0)
 
 
 /* find hash node by key returns 0 on success, else -1 */
-int plm_hash_find(struct plm_hash_node **pp, struct plm_hash *hash,
-				  void *key, void *value)
+int plm_hash_find(struct plm_hash_node **pp, struct plm_hash *hash, void *key)
 {
 	int n;
 	uint32_t k;
@@ -75,39 +74,29 @@ int plm_hash_find(struct plm_hash_node **pp, struct plm_hash *hash,
 	
 	k = hash->h_key(key, hash->h_bucket_num);
 	bucket = &hash->h_bucket[k];
-	PLM_LIST_SEARCH(&ln, &bucket->hb_list, value_cmp, value);
+	PLM_LIST_SEARCH(&ln, &bucket->hb_list, value_cmp, key);
 	node = (struct plm_hash_node *)ln;
 	*pp = node;
 
 	return (node ? 0 : -1);
 }
 
-/* delete all values with the same key */
+/* remove the node with specifiy key and value */
 void plm_hash_delete(struct plm_hash *hash, void *key)
 {
-	uint32_t k;
-
-	k = hash->h_key(key, hash->h_bucket_num);
-	hash->h_len -= PLM_LIST_LEN(&hash->h_bucket[k].hb_list);
-	PLM_LIST_INIT(&hash->h_bucket[k].hb_list);
-}
-
-/* remove the node with specifiy key and value */
-void plm_hash_delete2(struct plm_hash *hash, void *key, void *value)
-{
-	int n;
-	struct plm_hash_node *node = NULL;
+	int n, old_len, new_len;
 	uint32_t k = hash->h_key(key, hash->h_bucket_num);
 	struct plm_hash_bucket *bucket = &hash->h_bucket[k];
-	int old_len = PLM_LIST_LEN(&bucket->hb_list), new_len;
 
-	PLM_LIST_REMOVE_IF(&bucket->hb_list, value_cmp, value);
+	old_len = PLM_LIST_LEN(&bucket->hb_list);
+	PLM_LIST_REMOVE_IF(&bucket->hb_list, value_cmp, key);
+	new_len = PLM_LIST_LEN(&bucket->hb_list);
 	hash->h_len -= old_len - new_len;
 }
 
 struct plm_hash_helper {
-	void (*fn)(void *, void *, void *);
-	void *data;
+	void (*hh_fn)(void *, void *, void *);
+	void *hh_data;
 };
 
 static void plm_hash_foreach_helper(void *node, void *data)
@@ -117,7 +106,7 @@ static void plm_hash_foreach_helper(void *node, void *data)
 
 	hash_node = (struct plm_hash_node *)node;
 	helper = (struct plm_hash_helper *)data;
-	helper->fn(helper->data, hash_node->hn_key, hash_node->hn_value);
+	helper->hh_fn(hash_node->hn_key, hash_node->hn_value, helper->hh_data);
 }
 
 void plm_hash_foreach(struct plm_hash *hash, void *data,
@@ -126,8 +115,8 @@ void plm_hash_foreach(struct plm_hash *hash, void *data,
 	int i;
 	struct plm_hash_helper helper;
 
-	helper.data = data;
-	helper.fn = fn;
+	helper.hh_data = data;
+	helper.hh_fn = fn;
 	
 	for (i = 0; i < hash->h_bucket_num; i++) {
 		struct plm_hash_bucket *bucket;

@@ -23,6 +23,9 @@
  * SUCH DAMAGE.
  */
 
+#include <errno.h>
+
+#include "plm_log.h"
 #include "plm_buffer.h"
 #include "plm_comm.h"
 #include "plm_http.h"
@@ -41,8 +44,8 @@ void plm_http_response_read(void *data, int fd)
 	struct plm_http_conn *conn;
 
 	forward = (struct plm_http_forward *)data;
-	if (!forward->hr_buf) {
-		forward->hr_buf = plm_buffer_alloc(MEM_8K);
+	if (!forward->hf_buf) {
+		forward->hf_buf = plm_buffer_alloc(MEM_8K);
 		if (!forward->hf_buf) {
 			/* indicate client error */
 			plm_log_write(PLM_LOG_FATAL, "plm_buffer_alloc failed");
@@ -50,8 +53,8 @@ void plm_http_response_read(void *data, int fd)
 		}
 	}
 
-	buf = forward->hr_buf + forward->hr_offset;
-	bufsize = forward->hr_size - forward->hr_offset;
+	buf = forward->hf_buf + forward->hf_offset;
+	bufsize = forward->hf_size - forward->hf_offset;
 
 	n = plm_comm_read(fd, buf, bufsize);
 	if (n < 0) {
@@ -76,7 +79,7 @@ void plm_http_response_read(void *data, int fd)
 
 	forward->hf_offset = n;
 
-	request = (struct plm_http_request *)forward->hf_request;
+	request = forward->hf_request;
 	conn = (struct plm_http_conn *)request->hr_conn;
 
 	plm_http_reply(conn, conn->hc_fd);

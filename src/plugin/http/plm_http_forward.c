@@ -23,15 +23,20 @@
  * SUCH DAMAGE.
  */
 
+#include <netdb.h>
+#include <errno.h>
+
+#include "plm_log.h"
+#include "plm_http_plugin.h"
 #include "plm_http_forward.h"
 
 static void plm_http_forward_send(struct plm_http_forward *forward);
 static void plm_http_forward_connect(void *, int);
+static void plm_http_forward_close(void *);
 
 void plm_http_forward_start(struct plm_http_request *request, void *data,
 							void (*fn)(void *, int))
 {
-	struct hostent *ent;
 	struct plm_http_conn *conn;
 	struct plm_mempool *pool;
 	struct plm_http_forward *forward;
@@ -40,18 +45,10 @@ void plm_http_forward_start(struct plm_http_request *request, void *data,
 	pool = &conn->hc_pool;
 	forward = plm_mempool_alloc(pool, sizeof(*forward));
 	if (forward) {
-		ent = gethostbyname(request->hr_host.s_str);
-		if (!ent) {
-			plm_log_write(PLM_LOG_FATAL, "gethostbyname failed");
-			goto ERR;
-		}
-		
 		memset(forward, 0, sizeof(*forward));
 		request->hr_forward = forward;
 		forward->hf_fn = fn;
 		forward->hf_data = data;
-		forward->hf_remote = *(struct in_addr *)ent->h_addr;
-		forward->hf_port = request->hr_port;
 		forward->hf_request = request;
 		forward->hf_send_header = 1;
 		forward->hf_fd = plm_comm_open(PLM_COMM_TCP, NULL, 0, 0,
@@ -61,11 +58,14 @@ void plm_http_forward_start(struct plm_http_request *request, void *data,
 						  strerror(errno));
 			goto ERR;
 		}
-			
+
+		forward->hf_cch.cch_handler = plm_http_forward_close;
+		forward->hf_cch.cch_data = forward;
+		plm_comm_add_close_handler(forward->hf_fd, &forward->hf_cch);
 		if (plm_event_io_write(forward->hf_fd,
 							   forward, plm_http_forward_connect))
 			goto ERR;
-		
+
 		return;
 	}
 
@@ -94,7 +94,7 @@ static void plm_http_forward_send_data(void *data, int fd)
 	struct plm_http_forward *forward;
 
 	forward = (struct plm_http_forward *)data;
-	request = (struct plm_http_request *)forward->hf_request;
+	request = forward->hf_request;
 
 	if (!forward->hf_post_recv) {
 		/* second chance */
@@ -147,17 +147,36 @@ void plm_http_forward_send(struct plm_http_forward *forward)
 	}
 }
 
-void plm_http_forward_connect(void *data, int fd)
+void plm_http_forward_close(void *data)
 {
-	int err;
-	struct sockaddr_in addr;
 	struct plm_http_forward *forward;
 
 	forward = (struct plm_http_forward *)data;
+}
+
+void plm_http_forward_connect(void *data, int fd)
+{
+	int err;
+	struct hostent *ent;
+	struct sockaddr_in addr;
+	struct plm_http_forward *forward;
+	struct plm_http_request *request;
+
+	forward = (struct plm_http_forward *)data;
+	request = forward->hf_request;
+
+	ent = gethostbyname(request->hr_host.s_str);
+	if (!ent) {
+		plm_log_write(PLM_LOG_FATAL, "gethostbyname failed");
+		forward->hf_fn(forward->hf_data, -1);
+		plm_comm_close(forward->hf_fd);
+		return;
+	}
+	
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(forward->hf_port);
-	addr.sin_addr.s_addr = forward->hf_addr;
+	addr.sin_port = htons(request->hr_port);
+	addr.sin_addr = *(struct in_addr *)ent->h_addr;
 
 	err = plm_comm_connect(forward->hf_fd, &addr);
 	if (err == 0 || errno == EISCONN) {

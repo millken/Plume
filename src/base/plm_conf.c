@@ -597,7 +597,10 @@ plm_conf_parse_ins(void **ctx, struct plm_mempool *p, char *line, int len)
 		}
 	}
 
-	plm_conf_set_cmd(&cl, *ctx);
+	if (plm_conf_set_cmd(&cl, *ctx)) {
+		err_msg = "parameter parse failed";
+		goto PARSE_FAILED;
+	}
 
 	if (stat == CPS_BLOCK_BEG || stat == CPS_BLOCK_END)
 		return (stat);

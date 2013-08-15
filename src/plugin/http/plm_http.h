@@ -32,6 +32,7 @@
 #include "plm_string.h"
 #include "plm_mempool.h"
 #include "http_parser.h"
+#include "plm_http_plugin.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -95,9 +96,7 @@ struct plm_http_request {
 	plm_string_t hr_host;
 	unsigned short hr_port;
 
-	/* struct plm_http_conn * */
-	void *hr_conn;
-
+	struct plm_http_conn *hr_conn;
 	struct plm_http_forward *hr_forward;
 	
 	uint8_t hr_complete : 1;

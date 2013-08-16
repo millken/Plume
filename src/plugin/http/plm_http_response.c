@@ -39,18 +39,19 @@ void plm_http_response_read(void *data, int fd)
 	int n;
 	char *buf;
 	size_t bufsize;
+	const char *errmsg = NULL;
 	struct plm_http_forward *forward;
 	struct plm_http_request *request;
-	struct plm_http_conn *conn;
 
 	forward = (struct plm_http_forward *)data;
 	if (!forward->hf_buf) {
 		forward->hf_buf = plm_buffer_alloc(MEM_8K);
 		if (!forward->hf_buf) {
-			/* indicate client error */
-			plm_log_write(PLM_LOG_FATAL, "plm_buffer_alloc failed");
-			return;
+			errmsg = "plm_buffer_alloc failed";
+			goto ERR;
 		}
+		forward->hf_size = SIZE_8K;
+		forward->hf_offset = 0;
 	}
 
 	buf = forward->hf_buf + forward->hf_offset;
@@ -58,29 +59,31 @@ void plm_http_response_read(void *data, int fd)
 
 	n = plm_comm_read(fd, buf, bufsize);
 	if (n < 0) {
-		int err = 0;
-		
-		if (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR)
-			err = plm_event_io_read(fd, data, plm_http_response_read);
-		else
-			err = -1;
-
-		if (err) {
-			plm_log_write(PLM_LOG_FATAL, "plm_comm_read failed: %s",
-						  strerror(errno));
-			plm_comm_close(fd);
+		if (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR) {
+			if (plm_event_io_read(fd, data, plm_http_response_read))
+				errmsg = "plm_event_io_read failed";
+		} else {
+			errmsg = "plm_comm_read failed";
 		}
+
+		if (errmsg)
+			goto ERR;
+		
 		return;
 	}
 
-	if (n == 0) {
-		/* EOF */
-	}
+	if (n == 0)
+		plm_comm_close(fd);
 
 	forward->hf_offset = n;
-
 	request = forward->hf_request;
-	conn = (struct plm_http_conn *)request->hr_conn;
+	plm_http_reply(request->hr_conn, request->hr_conn->hc_fd);
+	return;
 
-	plm_http_reply(conn, conn->hc_fd);
+ERR:
+	plm_log_write(PLM_LOG_FATAL, "%s %s %d: %s %s",
+				  __FILE__, __FUNCTION__, __LINE__, errmsg, strerror(errno));
+	plm_comm_close(forward->hf_fd);
+	forward->hf_offset = 0;
+	plm_http_reply(request->hr_conn, request->hr_conn->hc_fd);
 }

@@ -147,6 +147,7 @@ struct plm_http_conn *plm_http_conn_alloc(struct plm_http_ctx *ctx,
 	conn = (struct plm_http_conn *)
 		plm_lookaside_list_alloc(&ctx->hc_conn_pool, NULL);
 	if (conn) {
+		memset(conn, 0, sizeof(*conn));
 		conn->hc_buf = plm_buffer_alloc(MEM_4K);
 		if (conn->hc_buf) {
 			conn->hc_size = SIZE_4K;
@@ -159,7 +160,8 @@ struct plm_http_conn *plm_http_conn_alloc(struct plm_http_ctx *ctx,
 			conn->hc_cch.cch_handler = plm_http_conn_free;
 			conn->hc_cch.cch_data = conn;
 		} else {
-			conn->hc_size = conn->hc_offset = 0;
+			plm_lookaside_list_free(&ctx->hc_conn_pool, conn, NULL);
+			conn = NULL;
 		}		
 	}
 	
@@ -185,7 +187,7 @@ plm_http_request_parse(struct plm_http_request **pp, size_t *parsed,
 	struct plm_http_request *req;
 
 	req = *pp;
-	if (!req || req->hr_complete) {
+	if (!req) {
 		req = plm_http_request_alloc(conn);
 		*pp = req;
 		if (plm_http_init(&req->hr_http, HTTP_REQUEST, &conn->hc_pool))
@@ -273,16 +275,96 @@ static void plm_http_read_body(void *data, int fd)
 		plm_http_forward_body(request, request, plm_http_body_complete);
 }
 
+void plm_http_body_complete(void *data, int state)
+{
+	const char *errmsg = NULL;
+	struct plm_http_request *request;
+	struct plm_http_conn *conn;
+
+	request = (struct plm_http_request *)data;
+	conn = request->hr_conn;
+	
+	if (state == -1) {
+		errmsg = "state indicate error";
+		goto ERR;
+	}
+	
+	if (!plm_event_io_read(conn->hc_fd, conn, plm_http_read_body))
+		return;
+
+	errmsg = "plm_event_io_read failed";
+ERR:
+	plm_log_write(PLM_LOG_FATAL, "%s %s %d: %s %s", __FILE__, __FUNCTION__,
+				  __LINE__, errmsg, strerror(errno));
+	plm_comm_close(conn->hc_fd);
+}
+
+static void plm_http_request_complete(void *data, int state)
+{
+	const char *errmsg = NULL;
+	plm_string_t *buf;
+	struct plm_http_request *request;
+
+	request = (struct plm_http_request *)data;	
+	if (state == -1) {
+		errmsg = "state indicate error";
+		plm_log_write(PLM_LOG_FATAL, "%s %s %d: %s %s", __FILE__, __FUNCTION__,
+					  __LINE__, errmsg, strerror(errno));
+		plm_comm_close(request->hr_conn->hc_fd);
+		return;
+	}
+
+	request->hr_send_header_done = 1;
+	buf = &request->hr_bodybuf;
+	if (buf->s_len > 0) {
+		request->hr_offset = 0;
+		plm_http_forward_body(request, data, plm_http_body_complete);
+	}
+}
+
+static void plm_http_request_parse_field(struct plm_http_request *request)
+{
+	int state = 0;
+	plm_string_t *v;	
+	struct plm_http *http;
+	struct plm_hash_node *node;
+	struct plm_http_field *host, *connection;
+	plm_string_t key_host = plm_string("Host");
+	plm_string_t key_conn = plm_string("Connection");
+	plm_string_t key_proxy_conn = plm_string("Proxy-Connection");
+
+	http = &request->hr_http;
+
+	if (!plm_hash_find(&node, &http->h_fields, &key_host)) {
+		host = (struct plm_http_field *)node;
+		request->hr_host = *(plm_string_t *)host->hf_value;
+	}
+
+	if (!plm_hash_find(&node, &http->h_fields, &key_conn))
+		state = 1;
+	
+	if (!plm_hash_find(&node, &http->h_fields, &key_proxy_conn))
+		state = 2;
+	
+	if (state != 0) {
+		connection = (struct plm_http_field *)node;
+		v = (plm_string_t *)connection->hf_value;
+		if (strcasestr(v->s_str, "Keep-Alive"))
+			request->hr_keepalive = 1;
+		if (state == 2)
+			plm_hash_delete(&http->h_fields, &key_proxy_conn);
+	}
+	request->hr_port = 80;
+}
+
 static void plm_http_buf_pack(void *key, void *value, void *data)
 {
 	struct plm_http_request *request;
-	struct plm_http_conn *conn;	
 	struct plm_mempool *pool;
 	plm_string_t *k, *v, *buf;
 
 	request = (struct plm_http_request *)data;
-	conn = (struct plm_http_conn *)request->hr_conn;
-	pool = &conn->hc_pool;
+	pool = &request->hr_conn->hc_pool;
 	buf = &request->hr_reqbuf;
 	k = (plm_string_t *)key;
 	v = (plm_string_t *)value;
@@ -316,76 +398,10 @@ static int plm_http_request_pack(struct plm_http_request *request)
 
 	/* field */
 	plm_hash_foreach(&request->hr_http.h_fields, request, plm_http_buf_pack);
-
+	
 	/* end \r\n */
-	plm_strappend(buf, "\r\n", 2, pool);
+	plm_strzappend(buf, "\r\n", 2, pool);
 	return (0);
-}
-
-void plm_http_body_complete(void *data, int state)
-{
-	int err;
-	struct plm_http_request *request;
-	struct plm_http_conn *conn;
-	
-	if (state == -1) {
-		/* error */
-		return;
-	}
-
-	request = (struct plm_http_request *)data;
-	conn = (struct plm_http_conn *)request->hr_conn;
-
-	err = plm_event_io_read(conn->hc_fd, conn, plm_http_read_body);
-	if (err) {
-		/* error */
-	}
-}
-
-static void plm_http_request_complete(void *data, int state)
-{
-	plm_string_t *buf;
-	struct plm_http_request *request;
-	
-	if (state == -1) {
-		/* error */
-		return;
-	}
-
-	request->hr_send_header_done = 1;
-	request = (struct plm_http_request *)data;
-	buf = &request->hr_bodybuf;
-	if (buf->s_len > 0) {
-		request->hr_offset = 0;
-		plm_http_forward_body(request, data, plm_http_body_complete);
-	}
-}
-
-static void plm_http_request_parse_field(struct plm_http_request *request)
-{
-	plm_string_t *v;	
-	struct plm_http *http;
-	struct plm_hash_node *node;
-	struct plm_http_field *host, *connection;
-	plm_string_t key_host = plm_string("Host");
-	plm_string_t key_conn = plm_string("Connection");
-	plm_string_t key_proxy_conn = plm_string("Proxy-Connection");
-
-	http = &request->hr_http;
-
-	if (!plm_hash_find(&node, &http->h_fields, &key_host)) {
-		host = (struct plm_http_field *)node;
-		request->hr_host = *(plm_string_t *)host->hf_value;
-	}
-	if (!plm_hash_find(&node, &http->h_fields, &key_conn)
-		|| !plm_hash_find(&node, &http->h_fields, &key_proxy_conn))
-	{
-		connection = (struct plm_http_field *)node;
-		v = (plm_string_t *)connection->hf_value;
-		if (strcasestr(v->s_str, "Keep-Alive"))
-			request->hr_keepalive = 1;
-	}
-	request->hr_port = 80;
 }
 
 void plm_http_request_chain_process(struct plm_http_request *request)

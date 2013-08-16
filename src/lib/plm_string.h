@@ -132,13 +132,20 @@ typedef struct plm_string {
 	do {									\
 		size_t _len1 = (k)->s_len;			\
 		size_t _len2 = (v)->s_len;			\
-		size_t _len = _len1 + _len2 + 4;	\
+		size_t _len = _len1 + _len2 + 4 + (s)->s_len;		\
 		char *_mem = (char *)plm_mempool_alloc((p), _len);	\
 		if (_mem) {											\
-			memcpy(_mem, (k)->s_str, _len1);				\
-			memcpy(_mem + _len1, ": ", 2);					\
-			memcpy(_mem + _len1 + 2, (v)->s_str, _len2);	\
-			memcpy(_mem + _len1 + _len2 + 2, "\r\n", 2);	\
+		    char *_s = _mem;								\
+	        memcpy(_s, (s)->s_str, (s)->s_len);				\
+			_s += (s)->s_len;								\
+			memcpy(_s, (k)->s_str, _len1);					\
+			_s += _len1;									\
+			memcpy(_s, ": ", 2);							\
+			_s += 2;										\
+			memcpy(_s, (v)->s_str, _len2);					\
+			_s += _len2;									\
+			memcpy(_s, "\r\n", 2);							\
+			(s)->s_str = _mem; (s)->s_len = _len;			\
 		} \
 	} while (0)	
 

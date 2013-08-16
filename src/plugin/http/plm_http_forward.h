@@ -38,17 +38,23 @@ extern "C" {
 #endif
 
 struct plm_http_forward {
-	/* orign server */
 	uint16_t hf_send_header : 1;
 	uint16_t hf_send_body : 1;
 	uint16_t hf_post_recv : 1;
 
 	int hf_fd;
+
+	/* buffer for recv orign server reply */
 	char *hf_buf;
 	size_t hf_size;
 	size_t hf_offset;
+
+	/* orign server */
+	struct sockaddr_in hf_addr;
+
+	/* fd close handler */
 	struct plm_comm_close_handler hf_cch;
-	
+
 	struct plm_http_request *hf_request;
 
 	void (*hf_fn)(void *, int);

@@ -317,14 +317,14 @@ plm_conf_parse_variable(struct plm_mempool *p, void *ctx,
 	const char *err_msg = NULL;
 	int var_link = 0;
 
-#define GET_VAR_AND_APPEND() \
-	do { \
-		plm_string_t *v; \
-		plm_string_t vn; \
-		plm_strassign(&vn, &line[beg], end-beg, p); \
-		if (plm_conf_get_var_value(&v, p, ctx, &name)) \
-			goto PARSE_FAILED; \
-		plm_strappend(&value, v->s_str, v->s_len, p); \
+#define GET_VAR_AND_APPEND()							\
+	do {												\
+		plm_string_t *v;								\
+		plm_string_t vn;								\
+		plm_strzassign(&vn, &line[beg], end-beg, p);	\
+		if (plm_conf_get_var_value(&v, p, ctx, &name))	\
+			goto PARSE_FAILED;							\
+		plm_strzappend(&value, v->s_str, v->s_len, p);	\
 	} while(0);
 
 	for (i = 1; i < len; i++) {
@@ -341,7 +341,7 @@ plm_conf_parse_variable(struct plm_mempool *p, void *ctx,
 			if (end == beg)
 				end = i;
 
-			plm_strassign(&name, &line[beg], end-beg, p);
+			plm_strzassign(&name, &line[beg], end-beg, p);
 			last = stat;
 			break;
 
@@ -374,7 +374,7 @@ plm_conf_parse_variable(struct plm_mempool *p, void *ctx,
 			if (var_link) {
 				GET_VAR_AND_APPEND();
 			} else {
-				plm_strassign(&value, &line[beg], end-beg, p);
+				plm_strzassign(&value, &line[beg], end-beg, p);
 			}
 			break;
 		}
@@ -408,13 +408,10 @@ static int plm_conf_cmd_line_push(void **ctx, struct plm_cmd_line *cl,
 
 	if (cl->cl_stat == 0) {
 		PLM_DLIST_INIT(&cl->cl_params);
-
-		cl->cl_name.s_str = (char *)plm_mempool_alloc(p, len);
-		cl->cl_name.s_len = len;
+		plm_strzassign(&cl->cl_name, token, len, p);
 		if (cl->cl_name.s_str) {
 			struct plm_cmd *cmd;
 
-			memcpy(cl->cl_name.s_str, token, len);
 			cl->cl_stat = 1;
 
 			/* find the command and create context if need */
@@ -441,7 +438,7 @@ static int plm_conf_cmd_line_push(void **ctx, struct plm_cmd_line *cl,
 	param = (struct plm_cmd_param *)
 		plm_mempool_alloc(p, sizeof(struct plm_cmd_param));
 	if (param) {
-		plm_strassign(&param->cp_data, token, len, p);
+		plm_strzassign(&param->cp_data, token, len, p);
 		PLM_DLIST_ADD_BACK(&cl->cl_params, &param->cp_node);
 	}
 
@@ -472,21 +469,21 @@ plm_conf_parse_ins(void **ctx, struct plm_mempool *p, char *line, int len)
 	int var = 0;
 	int i;
 
-#define GET_VAR_AND_PUSH() \
-	do { \
-		plm_string_t *v; \
-		plm_string_t var_name; \
-		var_name.s_str = &line[beg]; \
-		var_name.s_len = end-beg; \
+#define GET_VAR_AND_PUSH()									  \
+	do {													  \
+		plm_string_t *v;									  \
+		plm_string_t var_name;								  \
+		var_name.s_str = &line[beg];						  \
+		var_name.s_len = end-beg;							  \
 		if (plm_conf_get_var_value(&v, p, *ctx, &var_name)) { \
-			err_msg = "can find variable"; \
-			goto PARSE_FAILED; \
-		} \
+			err_msg = "can find variable";					  \
+			goto PARSE_FAILED;								  \
+		}																\
 		if (plm_conf_cmd_line_push(ctx, &cl, p, v->s_str, v->s_len)) {	\
-			err_msg = "push command failed"; \
-			goto PARSE_FAILED; \
-		} \
-		var = 0; \
+			err_msg = "push command failed";							\
+			goto PARSE_FAILED;											\
+		}																\
+		var = 0;														\
 	} while (0)
 
 	cl.cl_stat = 0; 

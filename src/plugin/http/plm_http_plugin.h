@@ -26,39 +26,18 @@
 #ifndef _PLM_HTTP_PLUGIN_H
 #define _PLM_HTTP_PLUGIN_H
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <stdint.h>
-
-#include "plm_comm.h"
-#include "plm_mempool.h"
 #include "plm_lookaside_list.h"
-#include "plm_dlist.h"
-#include "plm_http.h"
+#include "plm_string.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 struct plm_http_ctx {
-	int hc_fd;
 	plm_string_t hc_addr;
-	short hc_port;
+	int hc_port;
 	int hc_backlog;
 	struct plm_lookaside_list hc_conn_pool;
-};
-
-struct plm_http_conn {
-	struct plm_http_request *hc_request;
-	struct plm_mempool hc_pool;
-	struct sockaddr_in hc_addr;
-	struct plm_comm_close_handler hc_cch;
-	
-	int hc_fd;
-	char *hc_buf;
-	size_t hc_size;
-	size_t hc_offset;
 };
 
 #ifdef __cplusplus

@@ -61,12 +61,15 @@ struct plm_http_forward {
 	void *hf_data;
 };
 
-void plm_http_forward_start(struct plm_http_request *request, void *data,
-							void (*fn)(void *, int));
+void plm_http_request_forward(struct plm_http_request *request,
+							  void (*fn)(void *data, int));
 
-void plm_http_forward_body(struct plm_http_request *request, void *data,
-						   void (*fn)(void *, int));	
+void plm_http_body_forward(struct plm_http_request *request,
+							  void (*fn)(void *data, int));
 
+void plm_http_connect_forward(struct plm_http_request *request,
+							  void (*fn)(void *data, int));
+	
 #ifdef __cplusplus
 }
 #endif

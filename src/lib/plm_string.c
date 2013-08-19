@@ -31,13 +31,28 @@ int plm_strdup(plm_string_t *out, plm_string_t *in)
 {
 	int rc = -1;
 	
-	out->s_str = (char *)malloc(in->s_len);
+	out->s_str = (char *)malloc(in->s_len * sizeof(char));
 	if (out->s_str) {
 		memcpy(out->s_str, in->s_str, in->s_len);
 		out->s_len = in->s_len;
 		rc = 0;
 	}
 	
+	return (rc);
+}
+
+int plm_strzdup(plm_string_t *out, plm_string_t *in)
+{
+	int rc = -1;
+
+	out->s_str = (char *)malloc((in->s_len + 1) * sizeof(char));
+	if (out->s_str) {
+		memcpy(out->s_str, in->s_str, in->s_len);
+		out->s_len = in->s_len;
+		out->s_str[out->s_len] = 0;
+		rc = 0;
+	}
+
 	return (rc);
 }
 
@@ -73,6 +88,25 @@ int plm_strcat2(plm_string_t *out, const plm_string_t *dup,
 	}
 
 	return (str ? len : -1);
+}
+
+int plm_strzcat2(plm_string_t *out, const plm_string_t *dup,
+				const plm_string_t *cat)
+{
+	int len;
+	char *str;
+
+	len = dup->s_len + cat->s_len;
+	str = (char *)malloc((len + 1) * sizeof(char));
+	if (str) {
+		out->s_str = str;
+		out->s_len = len;
+		memcpy(out->s_str, dup->s_str, dup->s_len);
+		memcpy(out->s_str + dup->s_len, cat->s_str, cat->s_len);
+		out->s_str[out->s_len] = 0;
+	}
+
+	return (str ? len : -1);	
 }
 
 #define STR2NUM()								\

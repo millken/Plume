@@ -37,15 +37,18 @@
 #include "plm_http_response.h"
 #include "plm_http_request.h"
 
+static int http_server;
+
 static void plm_http_read_header(void *, int);
 static void plm_http_read_body(void *, int);
-static void plm_http_request_chain_process(struct plm_http_request *);
-static struct plm_http_conn *
-plm_http_conn_alloc(struct plm_http_ctx *, struct sockaddr_in *, int);
+static void plm_http_body_forward_done(void *, int);
+static void plm_http_chain_process(struct plm_http_request *);
+static struct plm_http_conn *plm_http_conn_alloc(struct plm_http_ctx *);
 static void plm_http_conn_free(void *);
-
-static struct plm_http_request *
-plm_http_request_alloc(struct plm_http_conn *conn);
+static struct plm_http_request *plm_http_request_alloc(struct plm_http_conn *);
+static void plm_http_reset(struct plm_http_conn *);
+static void plm_http_bad_request(struct plm_http_conn *);
+static void plm_http_bad_gateway(struct plm_http_conn *);
 
 void plm_http_accept(void *data, int fd)
 {
@@ -67,13 +70,15 @@ void plm_http_accept(void *data, int fd)
 		}
 
 		retry++;
-		conn = plm_http_conn_alloc(ctx, &addr, clifd);
+		conn = plm_http_conn_alloc(ctx);
 		if (!conn) {
 			plm_comm_close(clifd);
 			plm_log_write(PLM_LOG_FATAL, "plm_http_conn_alloc failed");
 			break;
 		}
 
+		conn->hc_fd = clifd;
+		conn->hc_addr = addr;
 		plm_comm_add_close_handler(clifd, &conn->hc_cch);
 		err = plm_event_io_read(clifd, conn, plm_http_read_header);
 		if (err) {
@@ -93,54 +98,9 @@ void plm_http_accept(void *data, int fd)
 
 void plm_http_reply(void *data, int fd)
 {
-	int n;
-	char *buf;
-	size_t bufsize;
-	struct plm_http_conn *conn;
-	struct plm_http_request *request;
-	struct plm_http_forward *forward;
-
-	conn = (struct plm_http_conn *)data;
-	request = conn->hc_request;
-	forward = (struct plm_http_forward *)request->hr_forward;
-
-	if (forward->hf_offset == 0) {
-		plm_comm_close(fd);
-		return;
-	}
-
-	buf = forward->hf_buf;
-	bufsize = forward->hf_offset - request->hr_reply_offset;
-	n = plm_comm_write(fd, buf, bufsize);
-	if (n < 0) {
-		int err = 0;
-		
-		if (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR)
-			err = plm_event_io_write(fd, data, plm_http_reply);
-		else
-			err = -1;
-
-		if (err) {
-			plm_log_write(PLM_LOG_FATAL, "plm_comm_write failed: %s",
-						  strerror(errno));
-			plm_comm_close(fd);
-		}
-		return;
-	}
-
-	request->hr_reply_offset += n;
-	if (request->hr_reply_offset < forward->hf_offset) {
-		plm_event_io_write(fd, data, plm_http_reply);
-		return;
-	}
-
-	request->hr_reply_offset = forward->hf_offset = 0;
-	plm_http_response_read(forward, forward->hf_fd);
 }
 
-struct plm_http_conn *plm_http_conn_alloc(struct plm_http_ctx *ctx,
-										  struct sockaddr_in *addr,
-										  int fd)
+struct plm_http_conn *plm_http_conn_alloc(struct plm_http_ctx *ctx)
 {
 	struct plm_http_conn *conn;
 
@@ -150,12 +110,7 @@ struct plm_http_conn *plm_http_conn_alloc(struct plm_http_ctx *ctx,
 		memset(conn, 0, sizeof(*conn));
 		conn->hc_buf = plm_buffer_alloc(MEM_4K);
 		if (conn->hc_buf) {
-			conn->hc_size = SIZE_4K;
-			conn->hc_offset = 0;
-			
-			conn->hc_fd = fd;
-			memcpy(&conn->hc_addr, addr, sizeof(conn->hc_addr));
-
+			conn->hc_size = SIZE_8K;
 			plm_mempool_init(&conn->hc_pool, 512, malloc, free);
 			conn->hc_cch.cch_handler = plm_http_conn_free;
 			conn->hc_cch.cch_data = conn;
@@ -174,7 +129,7 @@ void plm_http_conn_free(void *data)
 
 	conn = (struct plm_http_conn *)data;
 	if (conn->hc_buf) {
-		plm_buffer_free(MEM_4K, conn->hc_buf);
+		plm_buffer_free(MEM_8K, conn->hc_buf);
 		plm_mempool_destroy(&conn->hc_pool);
 	}
 }
@@ -187,73 +142,67 @@ plm_http_request_parse(struct plm_http_request **pp, size_t *parsed,
 	struct plm_http_request *req;
 
 	req = *pp;
-	if (!req) {
+	if (!req || req->hr_http.h_header_done) {
 		req = plm_http_request_alloc(conn);
 		*pp = req;
+
 		if (plm_http_init(&req->hr_http, HTTP_REQUEST, &conn->hc_pool))
 			return (-1);
+
+		PLM_LIST_ADD_FRONT(&conn->hc_list, &req->hr_node);
 	}
 
-	req->hr_next = conn->hc_request;
-	conn->hc_request = req;
 	return plm_http_parse(parsed, &req->hr_http, conn->hc_buf, n);
 }
 
 void plm_http_read_header(void *data, int fd)
 {
-	int header_done = 0;
+	int rc, n;
+	size_t parsed;	
 	struct plm_http_conn *conn;
 	struct plm_http_request *request;
 
 	conn = (struct plm_http_conn *)data;
 	request = conn->hc_request;
-	for (;;) {
-		int rc, n;
-		size_t parsed;
-
-		n = plm_comm_read(fd, conn->hc_buf + conn->hc_offset,
-						  conn->hc_size - conn->hc_offset);
-		if (n == EWOULDBLOCK)
-			break;
-		
-		if (n == 0) {
-			/* EOF */
+	n = plm_comm_read(fd, conn->hc_buf + conn->hc_offset,
+					  conn->hc_size - conn->hc_offset);
+	if (n < 0) {
+		if (plm_comm_ignore(errno)) {
+			plm_event_io_read(fd, data, plm_http_read_header);
+		} else {
+			plm_log_write(PLM_LOG_FATAL, "%s: read error, %s",
+						  __FUNCTION__, strerror(errno));
+			plm_comm_close(fd);
 		}
-
-		rc = plm_http_request_parse(&request, &parsed, n, conn);
-		if (rc == PLM_HTTP_PARSE_DONE) {
-			header_done = 1;
-			break;
-		} else if (rc == PLM_HTTP_PARSE_ERROR) {
-			/* indicate bad request */
-			break;
-		}
-		
-		conn->hc_offset = n - parsed;
-		if (parsed != n)
-			memmove(conn->hc_buf, conn->hc_buf + parsed, conn->hc_offset);
+		return;
 	}
 
-	if (header_done) {
-		if (request->hr_hasbody) {
-			if (plm_event_io_read(fd, data, plm_http_read_body)) {
-				plm_comm_close(fd);
-				plm_log_write(PLM_LOG_FATAL, "plm_event_io_read failed: %s",
-							  strerror(errno));
-				return;
-			}
-		}
-		plm_http_request_chain_process(request);		
+	if (n == 0) {
+		/* EOF */
+		plm_http_reset(conn, request);
+		return;
+	}
+
+	rc = plm_http_request_parse(&request, &parsed, n, conn);
+	if (rc == PLM_HTTP_PARSE_ERROR) {
+		plm_log_write(PLM_LOG_FATAL, "%s: bad request", __FUNCTION__);
+		plm_http_bad_request(conn, request);
+		return;
+	}
+		
+	conn->hc_offset = n - parsed;
+	if (parsed != n)
+		memmove(conn->hc_buf, conn->hc_buf + parsed, conn->hc_offset);
+
+	if (rc == PLM_HTTP_PARSE_DONE) {
+		if (request->hr_hasbody)
+			plm_event_io_read(fd, data, plm_http_read_body);
+		plm_http_chain_process(request);		
 	} else {
-		if (plm_event_io_read(fd, data, plm_http_read_header)) {
-			plm_comm_close(fd);
-			plm_log_write(PLM_LOG_FATAL, "plm_event_io_read failed: %s",
-						  strerror(errno));
-		}		
+		plm_event_io_read(fd, data, plm_http_read_header);
 	}
 }
 
-static void plm_http_body_complete(void *, int);
 static void plm_http_read_body(void *data, int fd)
 {
 	int n;
@@ -264,20 +213,22 @@ static void plm_http_read_body(void *data, int fd)
 	n = plm_comm_read(fd, conn->hc_buf, conn->hc_size);
 	if (n == 0) {
 		/* client closed */
+		plm_http_reset(conn);
 		return;
 	}
-	
-	request = conn->hc_request;
-	request->hr_bodybuf.s_str = conn->hc_buf;
-	request->hr_bodybuf.s_len = conn->hc_size;
 
-	if (request->hr_send_header_done)
-		plm_http_forward_body(request, request, plm_http_body_complete);
+	request = (struct plm_http_request *)PLM_LIST_FRONT(&conn->hc_list);
+	request->hr_bodybuf.s_str = conn->hc_buf;
+	request->hr_bodybuf.s_len = n;
+
+	if (request->hr_send_header_done) {
+		plm_http_body_forward(request, plm_http_body_forward_done);
+		plm_event_io_read(fd, data, plm_http_read_body);
+	}
 }
 
-void plm_http_body_complete(void *data, int state)
+void plm_http_body_forward_done(void *data, int state)
 {
-	const char *errmsg = NULL;
 	struct plm_http_request *request;
 	struct plm_http_conn *conn;
 
@@ -285,32 +236,22 @@ void plm_http_body_complete(void *data, int state)
 	conn = request->hr_conn;
 	
 	if (state == -1) {
-		errmsg = "state indicate error";
-		goto ERR;
+		plm_log_write(PLM_LOG_FATAL, "%s: state indicate failed", __FUNCTION__);
+		plm_http_bad_gateway(request->hc_conn);
+	} else {
+		plm_log_write(PLM_LOG_DEBUG, "%s: body forwad done", __FUNCTION__);
 	}
-	
-	if (!plm_event_io_read(conn->hc_fd, conn, plm_http_read_body))
-		return;
-
-	errmsg = "plm_event_io_read failed";
-ERR:
-	plm_log_write(PLM_LOG_FATAL, "%s %s %d: %s %s", __FILE__, __FUNCTION__,
-				  __LINE__, errmsg, strerror(errno));
-	plm_comm_close(conn->hc_fd);
 }
 
-static void plm_http_request_complete(void *data, int state)
+static void plm_http_request_forward_done(void *data, int state)
 {
-	const char *errmsg = NULL;
 	plm_string_t *buf;
 	struct plm_http_request *request;
 
 	request = (struct plm_http_request *)data;	
 	if (state == -1) {
-		errmsg = "state indicate error";
-		plm_log_write(PLM_LOG_FATAL, "%s %s %d: %s %s", __FILE__, __FUNCTION__,
-					  __LINE__, errmsg, strerror(errno));
-		plm_comm_close(request->hr_conn->hc_fd);
+		plm_log_write(PLM_LOG_FATAL, "%s state indicate failed", __FUNCTION__);
+		plm_http_bad_gateway(request->hr_conn);
 		return;
 	}
 
@@ -318,7 +259,9 @@ static void plm_http_request_complete(void *data, int state)
 	buf = &request->hr_bodybuf;
 	if (buf->s_len > 0) {
 		request->hr_offset = 0;
-		plm_http_forward_body(request, data, plm_http_body_complete);
+		plm_http_body_forward(request, plm_http_body_forward_done);
+		plm_event_io_read(request->hr_conn->hc_fd, request->hc_conn,
+						  plm_http_read_body);
 	}
 }
 
@@ -404,14 +347,24 @@ static int plm_http_request_pack(struct plm_http_request *request)
 	return (0);
 }
 
-void plm_http_request_chain_process(struct plm_http_request *request)
+void plm_http_chain_process(struct plm_http_request *request)
 {
 	plm_http_request_parse_field(request);
 	if (!plm_http_request_pack(request)) {
-		plm_http_forward_start(request, request, plm_http_request_complete);
+		switch (request->hr_http.h_method) {
+		case HTTP_GET:
+		case HTTP_HEAD:
+		case HTTP_POST:
+		case HTTP_PUT:
+			plm_http_request_forward(request, plm_http_request_forward_done);
+			break;
+		case HTTP_CONNECT:
+			plm_http_connect_forward(request, plm_http_connect_forward_done);
+			break;
+		}
 	} else {
 		plm_log_write(PLM_LOG_FATAL, "plm_http_request_pack failed");
-		plm_http_request_complete(request, -1);
+		plm_http_request_forward_done(request, -1);
 	}
 }
 
@@ -428,5 +381,37 @@ struct plm_http_request *plm_http_request_alloc(struct plm_http_conn *conn)
 	}
 	
 	return (request);
+}
+
+int plm_http_open_server(struct plm_http_ctx *ctx);
+{
+	int err = -1;
+	int port = ctx->hc_port;
+	int backlog = ctx->hc_backlog;
+	const char *ip = ctx->hc_addr.s_str;
+	
+	http_server = plm_comm_open(PLM_COMM_TCP, NULL, 0, 0, port, ip,
+								backlog, 1, 1);
+	if (http_server < 0) {
+		plm_log_syslog("can't open http plugin listen fd: %s:%d", ip, port);
+	} else {
+		err = plm_event_io_read(http_server, ctx, plm_http_accept);
+		if (err)
+			plm_log_syslog("plm_event_io_read failed on listen fd");
+	}
+
+	return (err);
+}
+
+int plm_http_close_server()
+{
+	int err = 0;
+	
+	if (http_server > 0) {
+		err = plm_comm_close(http_server);
+		http_server = -1;
+	}
+
+	return (err);
 }
 

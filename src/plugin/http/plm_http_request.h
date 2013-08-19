@@ -26,13 +26,28 @@
 #ifndef _PLM_HTTP_REQUEST_H
 #define _PLM_HTTP_REQUEST_H
 
+#include "plm_list.h"
+#include "plm_http_plugin.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void plm_http_accept(void *data, int fd);
+struct plm_http_conn {
+	plm_list_t hc_list;
+	struct plm_mempool hc_pool;
+	struct sockaddr_in hc_addr;
+	struct plm_comm_close_handler hc_cch;
+	
+	int hc_fd;
+	char *hc_buf;
+	size_t hc_size;
+	size_t hc_offset;
+};
 
-void plm_http_reply(void *data, int fd);	
+int plm_http_open_server(struct plm_http_ctx *ctx);
+
+int plm_http_close_server();
 
 #ifdef __cplusplus
 }

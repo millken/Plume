@@ -150,8 +150,11 @@ typedef struct plm_string {
 	} while (0)	
 
 int plm_strdup(plm_string_t *out, plm_string_t *in);
+int plm_strzdup(plm_string_t *out, plm_string_t *in);	
 int plm_strcmp(plm_string_t *s1, plm_string_t *s2);
 int plm_strcat2(plm_string_t *out, const plm_string_t *dup,
+				const plm_string_t *cat);
+int plm_strzcat2(plm_string_t *out, const plm_string_t *dup,
 				const plm_string_t *cat);
 	
 char plm_str2c(plm_string_t *str);

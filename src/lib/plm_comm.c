@@ -311,3 +311,30 @@ char plm_comm_get_flag_added(int fd)
 	return (commfd_array[fd].cf_associate);
 }
 
+/* ignore error
+ * @err -- errno
+ * return 1 -- ture, 0 -- false
+ */
+int plm_comm_ignore(int err)
+{
+	int rc;
+
+	switch (err) {
+	case EWOULDBLOCK:
+	case EINPROGRESS:
+	case EALREADY:
+	case EINTR:
+#if EAGAIN != EWOULDBLOCK
+	case EAGAIN:
+#endif
+#ifdef ERESTART
+	case ERESTART:
+#endif
+		rc = 1;
+	default:
+		rc = 0;
+	}
+
+	return (rc);
+}
+

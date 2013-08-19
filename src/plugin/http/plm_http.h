@@ -31,6 +31,7 @@
 #include "plm_hash.h"
 #include "plm_string.h"
 #include "plm_mempool.h"
+#include "plm_list.h"
 #include "http_parser.h"
 #include "plm_http_plugin.h"
 
@@ -80,9 +81,8 @@ struct plm_http {
 };
 
 struct plm_http_request {
-	/* parser */
+	plm_list_node_t hr_node;
 	struct plm_http hr_http;
-	struct plm_http_request *hr_next;
 
 	/* request pack buffer */
 	plm_string_t hr_reqbuf;

@@ -103,6 +103,11 @@ void *plm_http_ctx_create(void *parent)
 
 void plm_http_ctx_destroy(void *ctx)
 {
+	struct plm_http_ctx *ctx;
+
+	ctx = (struct plm_http_ctx *)data;
+	if (ctx->hc_addr.s_str)
+		plm_strclear(&ctx->hc_addr);
 	free(ctx);
 }
 

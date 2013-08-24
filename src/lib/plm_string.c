@@ -109,6 +109,15 @@ int plm_strzcat2(plm_string_t *out, const plm_string_t *dup,
 	return (str ? len : -1);	
 }
 
+void plm_strclear(plm_string_t *str)
+{
+	if (str->s_str) {
+		free(str->s_str);
+		str->s_str = NULL;
+		str->s_len = 0;
+	}
+}
+
 #define STR2NUM()								\
 	int sign = 1, beg = 0;						\
 	if (len > 0 && num[0] == '-') {				\

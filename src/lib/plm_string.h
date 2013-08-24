@@ -156,6 +156,7 @@ int plm_strcat2(plm_string_t *out, const plm_string_t *dup,
 				const plm_string_t *cat);
 int plm_strzcat2(plm_string_t *out, const plm_string_t *dup,
 				const plm_string_t *cat);
+void plm_strclear(plm_string_t *str);	
 	
 char plm_str2c(plm_string_t *str);
 short plm_str2s(plm_string_t *str);

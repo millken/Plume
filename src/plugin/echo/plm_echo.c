@@ -105,8 +105,7 @@ void plm_echo_ctx_destroy(void *ctx)
 	struct plm_echo_conf *conf;
 
 	conf = (struct plm_echo_conf *)ctx;
-	if (conf->ec_echostr.s_str)
-		free(conf->ec_echostr.s_str);
+	plm_strclear(&conf->ec_echostr);
 	free(ctx);
 }
 
@@ -153,10 +152,14 @@ struct plm_echo_client {
 	char *ec_buf;
 	int ec_bufn;
 	int ec_bytes_read;
+	int ec_offset;
 };
 
 static struct plm_echo_ctx ctx;
 static struct plm_lookaside_list blk_list;
+
+static void plm_echo_read(void *data, int fd);
+static void plm_echo_write(void *data, int fd);
 
 static void *plm_echo_alloc_client()
 {
@@ -171,8 +174,6 @@ static void *plm_echo_alloc_client()
 	return (cli);
 }
 
-static void plm_echo_read(void *data, int fd);
-static void plm_echo_write(void *data, int fd);
 static void plm_echo_free_client(void *data)
 {
 	struct plm_echo_client *cli;
@@ -201,45 +202,29 @@ void plm_echo_write(void *data, int fd)
 		buf = conf->ec_echostr.s_str;
 	} else {
 		len = cli->ec_bytes_read;
-		buf = cli->ec_buf;
+		buf = cli->ec_buf + cli->ec_offset;
 	}
 
-	nsend = 0;
-
-	while (nsend < len) {
-		rc = plm_comm_write(fd, &buf[nsend], len-nsend);
-		if (rc <= 0)
-			break;
-		nsend += rc;
-	}
-
-	if (nsend != len) {
-		shutdown(fd, SHUT_WR);
-		plm_log_write(PLM_LOG_WARNING,
-					  "plm_echo_write: comm write failed=%d", rc);
-	} else {
-		plm_log_write(PLM_LOG_TRACE,
-					  "plm_echo_write: send reply bytes=%d", len);
-		if (cli->ec_bufn > 0) {
-			plm_echo_read(data, fd);
+	nsend = plm_comm_write(fd, buf, len);
+	if (nsend < len) {
+		if (nsend > 0) {
+			cli->ec_bytes_read -= nsend;
+			cli->ec_offset += nsend;
+		}
+			
+		if (!plm_comm_ignore(errno)) {
+			plm_log_write(PLM_LOG_FATAL, "plm_comm_write error: %s",
+						  strerror(errno));
+			plm_comm_close(fd);
+			plm_echo_free_client(data);
 			return;
 		}
+
+		plm_event_io_write(fd, data, plm_echo_write);
+		return;
 	}
 
-	if (plm_event_io_read(fd, data, plm_echo_read)) {
-		plm_comm_close(fd);
-		plm_log_write(PLM_LOG_FATAL,
-					  "plm_echo_write: plm_event_io_read failed");
-	}
-}
-
-static void plm_echo_reply(void *data, int fd)
-{
-	if (plm_event_io_write(fd, data, plm_echo_write)) {
-		plm_comm_close(fd);
-		plm_log_write(PLM_LOG_WARNING,
-					  "plm_echo_reply: plm_event_io_write failed");
-	}
+	plm_event_io_read(fd, data, plm_echo_read);
 }
 
 static int plm_echo_eat(int fd, struct plm_echo_client *cli)
@@ -286,33 +271,60 @@ static int plm_echo_read_content(int fd, void *data)
 void plm_echo_read(void *data, int fd)
 {
 	int n;
-	struct plm_echo_client *cli = (struct plm_echo_client *)data;
+	char *buf;
+	size_t bufn;
+	struct plm_echo_client *cli;
+	struct plm_echo_ctx *ctx;
+	struct plm_echo_conf *conf;
 
-	if (cli->ec_ctx->ec_conf->ec_echostr.s_len > 0)
-		n = plm_echo_eat(fd, cli);
-	else
-		n = plm_echo_read_content(fd, cli);
+	cli = (struct plm_echo_client *)data;
+	ctx = cli->ec_ctx;
+	conf = ctx->ec_conf;
+	
+	if (conf->ec_echostr.s_len > 0) {
+		n = plm_echo_eat(fd);
+		bufn = conf->ec_echostr.s_len;
+		buf = conf->ec_echostr.s_str;
+	} else {
+		n = plm_echo_read_content(fd, data);
+		bufn = n;
+		buf = cli->ec_buf;
+	}
 
 	if (n > 0) {
 		plm_log_write(PLM_LOG_DEBUG, "plm_echo_read: read bytes=%d", n);
-		plm_echo_reply(data, fd);
+
+		n = plm_comm_write(fd, buf, bufn);
+		if (n < bufn) {
+			if (n > 0) {
+				cli->ec_bytes_read -= n;
+				cli->ec_offset += n;
+			}
+			
+			if (!plm_comm_ignore(errno)) {
+				plm_log_write(PLM_LOG_FATAL, "plm_comm_write error: %s",
+							  strerror(errno));				
+				goto ERR;
+			}
+
+			plm_event_io_write(fd, data, plm_echo_write);
+			return;
+		}
 	} else {
 		if (n == 0) {
-			if (plm_comm_close(fd)) {
-				plm_log_write(PLM_LOG_FATAL,
-							  "plm_echo_read: plm_comm_close failed: %s",
-							  strerror(errno));
-			}
-			plm_echo_free_client(data);
 			plm_log_write(PLM_LOG_TRACE,
 						  "plm_echo_read: connection reset=%d", fd);
-		} else if (errno == EWOULDBLOCK || errno == EAGAIN) {
+			
+			plm_comm_close(fd);
+			plm_echo_free_client(data);
+		} else if (plm_comm_ignore(errno)) {
 			plm_event_io_read(fd, data, plm_echo_read);
 			plm_log_write(PLM_LOG_TRACE, "plm_echo_read: no data to read");
 		} else {
+			plm_log_write(PLM_LOG_FATAL, "plm_echo_read: read failed=%d", fd);
+		ERR:
 			plm_comm_close(fd);
 			plm_echo_free_client(data);
-			plm_log_write(PLM_LOG_FATAL, "plm_echo_read: read failed=%d", fd);
 		}
 	}
 }

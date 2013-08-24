@@ -132,6 +132,7 @@ const char *plm_http_method(struct plm_http *http);
 const char *plm_http_parse_error(struct plm_http *http);
 
 #define plm_http_parse_status_line_done(http) (http)->h_status_line_done
+
 #define plm_http_parse_header_done(http) (http)->h_header_done
 
 int plm_http_parser_request_line_done(struct plm_http *http);

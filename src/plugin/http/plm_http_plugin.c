@@ -142,11 +142,18 @@ int plm_http_listen_set(void *ctx, plm_dlist_t *param_list)
 	}
 
 	param = (struct plm_cmd_param *)PLM_DLIST_FRONT(param_list);
+	
 	plm_strzdup(&http_ctx->hc_addr, &param->cp_data);
-	if (!http_ctx->hc_addr.s_str || -1 == inet_addr(param->cp_data.s_str)) {
+	if (!http_ctx->hc_addr.s_str) {
 		plm_log_syslog("strdup failed, memory emergent");
 		return (-1);
 	}
+
+	if (-1 == inet_addr(http_ctx->hc_addr.s_str)) {
+		plm_strclear(&http_ctx->hc_addr);
+		plm_log_syslog("invalid ip address with http_listen");
+		return (-1);
+	}	
 
 	param = (struct plm_cmd_param *)PLM_DLIST_NEXT(&param->cp_node);
 	http_ctx->hc_port = plm_str2s(&param->cp_data);

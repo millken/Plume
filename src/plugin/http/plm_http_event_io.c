@@ -23,33 +23,45 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _PLM_HTTP_ERRLOG_H
-#define _PLM_HTTP_ERRLOG_H
+#include "plm_http_event_io.h"
 
-#include <stdarg.h>
-#include "plm_log.h"
+static void
+plm_http_event_write_cb(void *data, int fd)
+{
+	int n;
+	struct plm_http_wrevt *we;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-extern int plm_http_log_level;
-
-#define PLM_DEBUG(fmt, args...)					\
-	if (plm_http_log_level >= PLM_LOG_DEBUG)	\
-		plm_log_write(PLM_LOG_DEBUG, "%s: "fmt, __FUNCTION__, ##args)
-
-#define PLM_TRACE(fmt, args...)					\
-	if (plm_http_log_level >= PLM_LOG_TRACE)	\
-		plm_log_write(PLM_LOG_TRACE, "%s: "fmt, __FUNCTION__, ##args)
-
-#define PLM_FATAL(fmt, args...)					\
-	if (plm_http_log_level >= PLM_LOG_FATAL)	\
-		plm_log_write(PLM_LOG_FATAL, "%s: "fmt, __FUNCTION__, ##args)
-
-#ifdef __cplusplus
+	we = (struct plm_http_wrevt *)data;
+	n = plm_comm_write(fd, we->hw_buf + we->hw_off, we->hw_len - we->hw_off);
+	if (n > 0) {
+		we->hw_off += n;
+		if (we->hw_len > we->hw_off)
+			PLM_EVT_DRV_WRITE(fd, we, plm_http_event_write_cb);
+		else
+			we->hw_fn(we->hw_data, we->hw_buf, we->hw_len, 0);
+	} else if (n <= 0) {
+		if (plm_comm_ignore(errno))
+			PLM_EVT_DRV_WRITE(fd, we, plm_http_event_write_cb);
+		else
+			we->hw_fn(we->hw_data, we->hw_buf, we->hw_off, -1);
+	}
 }
-#endif
 
-#endif
+void plm_http_event_write(int fd, struct plm_http_wrevt *we)
+{
+	int n;
 
+	n = plm_comm_write(fd, we->hw_buf, we->hw_len);
+	if (n > 0) {
+		we->hw_off += n;
+		if (we->hw_len > we->hw_off)
+			PLM_EVT_DRV_WRITE(fd, we, plm_http_event_write_cb);
+		else
+			we->hw_fn(we->hw_data, we->hw_buf, we->hw_len, 0);
+	} else if (n <= 0) {
+		if (plm_comm_ignore(errno))
+			PLM_EVT_DRV_WRITE(fd, we, plm_http_event_write_cb);
+		else
+			we->hw_fn(we->hw_data, we->hw_buf, we->hw_off, -1);
+	}
+}

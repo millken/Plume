@@ -33,6 +33,7 @@
 #include "plm_mempool.h"
 #include "plm_list.h"
 #include "plm_comm.h"
+#include "plm_http_event_io.h"
 #include "plm_http_parser.h"
 #include "plm_http_plugin.h"
 
@@ -64,8 +65,15 @@ struct plm_http_conn {
 		size_t hc_offset;
 	} hc_in;
 
+	struct plm_http_wrevt hc_wrevt;
+
 	plm_list_t hc_free_reqs;
 	plm_list_t hc_free_resps;
+
+	struct {
+		uint8_t hc_eof : 1;
+		uint8_t hc_badreq : 1;
+	} hc_flags;
 };
 
 struct plm_http_req {

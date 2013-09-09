@@ -185,14 +185,14 @@ plm_http_on_field(const plm_string_t *k, const plm_string_t *v, void *data)
 	plm_strzalloc(&nv, v->s_str, v->s_len, p);
 
 	if (!nk || !nv) {
-		FATAL("strzalloc failed");
+		PLM_FATAL("strzalloc failed");
 		return (-1);
 	}
 
 	node = (struct plm_hash_node *)plm_mempool_alloc(p, sizeof(*node));
 
 	if (!node) {
-		FATAL("mempool alloc failed");
+		PLM_FATAL("mempool alloc failed");
 		return (-1);
 	}
 	
@@ -245,7 +245,7 @@ static void plm_http_conn_free(void *data)
 			pt = MEM_8K;
 			break;
 		default:
-			FATAL("unknown buffer type");
+			PLM_FATAL("unknown buffer type");
 			break;
 		}
 		
@@ -305,7 +305,7 @@ void plm_http_accept(void *data, int fd)
 		clifd = plm_comm_accept(fd, &addr, 1);
 		if (clifd < 0) {
 			if (!plm_comm_ignore(errno))
-				FATAL("plm_comm_accept failed");
+				PLM_FATAL("plm_comm_accept failed");
 			break;
 		}
 
@@ -313,7 +313,7 @@ void plm_http_accept(void *data, int fd)
 		conn = plm_http_conn_alloc(ctx);
 		if (!conn) {
 			plm_comm_close(clifd);
-			FATAL("plm_http_conn_alloc failed");
+			PLM_FATAL("plm_http_conn_alloc failed");
 			break;
 		}
 
@@ -326,14 +326,36 @@ void plm_http_accept(void *data, int fd)
 
 	err = plm_event_io_read2(fd, data, plm_http_accept);
 	if (err) {
-		plm_log_write(PLM_LOG_FATAL, "plm_event_io_read on listen fd "
-					  "failed: %s", strerror(errno));
+		PLM_FATAL("plm_event_io_read on listen fd failed: %s",
+				  strerror(errno));
 		exit(-1);
 	}   
 }
 
 static void plm_http_req_process(struct plm_http_req *r)
 {}
+
+static void
+plm_http_schedule_reply_done(void *data, char *buf, size_t n, int state)
+{}
+
+static void plm_http_schedule_reply(struct plm_http_conn *c)
+{
+	static plm_string_t badreq = plm_string("");
+	
+	if (PLM_LIST_LEN(&c->hc_resps) > 0)
+		return;
+
+	if (c->hc_flags.hc_badreq) {
+		c->hc_wrevt.hw_fn = plm_http_schedule_reply_done;
+		c->hc_wrevt.hw_data = c;
+		c->hc_wrevt.hw_buf = badreq.s_str;
+		c->hc_wrevt.hw_len = badreq.s_len;
+		c->hc_wrevt.hw_off = 0;
+
+		return plm_http_event_write(c->hc_fd, &c->hc_wrevt);
+	}
+}
 
 void plm_http_read_req(void *data, int fd)
 {
@@ -354,15 +376,18 @@ void plm_http_read_req(void *data, int fd)
 		if (plm_comm_ignore(errno)) {
 			plm_event_io_read(fd, data, plm_http_read_req);
 		} else {
-			FATAL("plm_comm_read failed: %s", strerror(errno));
+			PLM_FATAL("plm_comm_read failed: %s", strerror(errno));
 			plm_comm_close(fd);
 		}
 		return;
 	}
 
 	if (n == 0) {
-		TRACE("connection closed");
-		plm_comm_close(fd);
+		PLM_TRACE("connection closed");
+		if (PLM_LIST_LEN(&conn->hc_reqs) == 0)
+			plm_comm_close(fd);
+		else
+			conn->hc_flags.hc_eof = 1;
 		return;
 	}
 
@@ -376,8 +401,10 @@ void plm_http_read_req(void *data, int fd)
 	
 	rc = plm_http_parser_req(&conn->hc_parser, &s);
 	if (rc == PLM_HTTP_PARSE_ERROR) {
-		TRACE("bad request");
-		plm_comm_close(fd);
+		PLM_TRACE("bad request");
+		conn->hc_flags.hc_badreq = 1;
+		shutdown(fd, SHUT_RD);
+		plm_http_schedule_reply(conn);
 		return;
 	}
 

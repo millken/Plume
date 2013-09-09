@@ -41,6 +41,23 @@ int plm_strdup(plm_string_t *out, const plm_string_t *in)
 	return (rc);
 }
 
+int plm_strzdup(plm_string_t *out, const plm_string_t *in)
+{
+	int rc = -1;
+	size_t len = in->s_len;
+
+	len = in->s_str[len - 1] == '\0' ? len - 1 : len;
+	out->s_str = (char *)malloc(len + 1);
+	if (out->s_str) {
+		memcpy(out->s_str, in->s_str, len);
+		out->s_str[len] = '\0';
+		out->s_len = in->s_len;
+		rc = 0;
+	}
+	
+	return (rc);	
+}
+
 int plm_strcmp(const plm_string_t *s1, const plm_string_t *s2)
 {
 	int rc;
@@ -109,6 +126,15 @@ int plm_strcat2(plm_string_t *out, const plm_string_t *dup,
 	}
 
 	return (str ? len : -1);
+}
+
+void plm_strclear(plm_string_t *str)
+{
+	if (str->s_str) {
+		free(str->s_str);
+		str->s_str = NULL;
+		str->s_len = 0;
+	}
 }
 
 #define STR2SI()								\

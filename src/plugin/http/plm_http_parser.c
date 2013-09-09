@@ -23,6 +23,7 @@
  * SUCH DAMAGE.
  */
 
+#include <assert.h>
 #include "plm_http_parser.h"
 
 enum plm_parser_state {

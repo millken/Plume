@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <errno.h>
 
+#include "plm_http_errlog.h"
 #include "plm_event.h"
 
 #ifdef __cplusplus
@@ -38,19 +39,28 @@ extern "C" {
 #define PLM_EVT_DRV_READ(fd, data, fn)							\
 	do {														\
         if (plm_event_io_read(fd, data, fn)) {					\
-			FATAL("plm_event_io_read: %s", strerror(errno));	\
+			PLM_FATAL("plm_event_io_read: %s", strerror(errno));\
 			exit(-1);											\
 		}														\
 	} while (0)
 
-#define PLM_EVT_DRV_WRITE(fd, data, fn)							\
-	do {														\
-        if (plm_event_io_write(fd, data, fn)) {					\
-			FATAL("plm_event_io_write: %s", strerror(errno));	\
-			exit(-1);											\
-		}														\
+#define PLM_EVT_DRV_WRITE(fd, data, fn)								\
+	do {															\
+        if (plm_event_io_write(fd, data, fn)) {						\
+			PLM_FATAL("plm_event_io_write: %s", strerror(errno));	\
+			exit(-1);												\
+		}															\
 	} while (0)
 
+struct plm_http_wrevt {
+	void (*hw_fn)(void *, char *, size_t, int);
+	void *hw_data;
+	char *hw_buf;
+	size_t hw_off;
+	size_t hw_len;
+};
+
+void plm_http_event_write(int fd, struct plm_http_wrevt *we);	
 
 #ifdef __cplusplus
 }

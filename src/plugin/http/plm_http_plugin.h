@@ -28,16 +28,24 @@
 
 #include "plm_lookaside_list.h"
 #include "plm_string.h"
+#include "plm_list.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+struct plm_http_backend {
+	plm_list_node_t hb_node;
+	struct sockaddr_in hb_addr;
+};	
 
 struct plm_http_ctx {
 	plm_string_t hc_addr;
 	int hc_port;
 	int hc_backlog;
 	struct plm_lookaside_list hc_conn_pool;
+
+	plm_list_t hc_backends;
 };
 
 #ifdef __cplusplus

@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2013 Xingxing Ke <yykxx@hotmail.com>
+/* Copyright (c) 2013 Xingxing Ke <yykxx@hotmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -23,15 +23,30 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _PLM_HTTP_RESPONSE_H
-#define _PLM_HTTP_RESPONSE_H
+#ifndef _PLM_HTTP_ERRLOG_H
+#define _PLM_HTTP_ERRLOG_H
+
+#include "plm_log.h"
 
 #ifdef __cplusplus
 #endif
 
-void plm_http_response_read(void *data, int fd);
+extern int plm_http_log_level;
+
+#define DEBUG(fmt, ...)						 \
+	if (plm_http_log_level >= PLM_LOG_DEBUG) \
+		plm_log_write(PLM_LOG_DEBUG, "%s: "fmt, __FUNCTION__, __VA_ARGS__)
+
+#define TRACE(fmt, ...)						 \
+	if (plm_http_log_level >= PLM_LOG_TRACE) \
+		plm_log_write(PLM_LOG_TRACE, "%s: "fmt, __FUNCTION__, __VA_ARGS__)
+
+#define FATAL(fmt, ...)						 \
+	if (plm_http_log_level >= PLM_LOG_FATAL) \
+		plm_log_write(PLM_LOG_FATAL, "%s: "fmt, __FUNCTION__, __VA_ARGS__)
 
 #ifdef __cplusplus
 #endif
 
 #endif
+

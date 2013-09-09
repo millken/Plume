@@ -23,55 +23,38 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _PLM_HTTP_FORWARD_H
-#define _PLM_HTTP_FORWARD_H
+#ifndef _PLM_HTTP_EVENT_IO_H
+#define _PLM_HTTP_EVENT_IO_H
 
-#include <stdint.h>
-#include <arpa/inet.h>
+#include <stdlib.h>
+#include <errno.h>
 
-#include "plm_comm.h"
-#include "plm_http.h"
-#include "plm_http_response.h"
+#include "plm_event.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct plm_http_forward {
-	uint16_t hf_send_header : 1;
-	uint16_t hf_send_body : 1;
-	uint16_t hf_post_recv : 1;
+#define PLM_EVT_DRV_READ(fd, data, fn)							\
+	do {														\
+        if (plm_event_io_read(fd, data, fn)) {					\
+			FATAL("plm_event_io_read: %s", strerror(errno));	\
+			exit(-1);											\
+		}														\
+	} while (0)
 
-	int hf_fd;
+#define PLM_EVT_DRV_WRITE(fd, data, fn)							\
+	do {														\
+        if (plm_event_io_write(fd, data, fn)) {					\
+			FATAL("plm_event_io_write: %s", strerror(errno));	\
+			exit(-1);											\
+		}														\
+	} while (0)
 
-	/* buffer for recv orign server reply */
-	char *hf_buf;
-	size_t hf_size;
-	size_t hf_offset;
 
-	/* orign server */
-	struct sockaddr_in hf_addr;
-
-	/* fd close handler */
-	struct plm_comm_close_handler hf_cch;
-
-	struct plm_http_request *hf_request;
-
-	void (*hf_fn)(void *, int);
-	void *hf_data;
-};
-
-void plm_http_request_forward(struct plm_http_request *request,
-							  void (*fn)(void *data, int));
-
-void plm_http_body_forward(struct plm_http_request *request,
-							  void (*fn)(void *data, int));
-
-void plm_http_connect_forward(struct plm_http_request *request,
-							  void (*fn)(void *data, int));
-	
 #ifdef __cplusplus
 }
 #endif
 
 #endif
+

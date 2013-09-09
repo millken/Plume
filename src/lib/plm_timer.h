@@ -40,7 +40,7 @@ int plm_timer_init(int thrdn);
 void plm_timer_destroy();	
 
 /* add a timer in the current thread timer list
- * @handler -- handle to event when time expire
+ * @handler -- process event when time expire
  *             a handler must be return nonzero value
  *             when the handler is time consuming
  * @data -- pass to handler

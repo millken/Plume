@@ -39,8 +39,8 @@
 
 static void *plm_http_ctx_create(void *);
 static void plm_http_ctx_destroy(void *);
-static int plm_http_port_set(void *, plm_dlist_t *);
 static int plm_http_listen_set(void *, plm_dlist_t *);
+static int plm_http_backend_set(void *, plm_dlist_t *);
 
 /* shared from plume main context */
 static struct plm_share_param sp;
@@ -57,17 +57,17 @@ static struct plm_cmd http_cmds[] = {
 	},
 	{
 		&http_plugin,
-		plm_string("http_port"),
+		plm_string("http_listen"),
 		PLM_INSTRUCTION,
-		plm_http_port_set,
+		plm_http_listen_set,
 		NULL,
 		NULL
 	},
 	{
 		&http_plugin,
-		plm_string("http_listen"),
+		plm_string("http_backend"),
 		PLM_INSTRUCTION,
-		plm_http_listen_set,
+		plm_http_backend_set,
 		NULL,
 		NULL
 	},
@@ -111,22 +111,7 @@ void plm_http_ctx_destroy(void *ctx)
 	free(ctx);
 }
 
-int plm_http_port_set(void *data, plm_dlist_t *param_list)
-{
-	struct plm_http_ctx *ctx;
-	struct plm_cmd_param *param;
-
-	ctx = (struct plm_http_ctx *)data;
-	if (PLM_DLIST_LEN(param_list) != 1) {
-		plm_log_syslog("the number of http_port param is wrong");
-		return (-1);
-	}
-
-	param = (struct plm_cmd_param *)PLM_DLIST_FRONT(param_list);
-	ctx->hc_port = plm_str2s(&param->cp_data);
-	return (0);
-}
-
+/* http_listen 192.168.1.101 80 5 */
 int plm_http_listen_set(void *ctx, plm_dlist_t *param_list)
 {
 	int n;
@@ -135,8 +120,8 @@ int plm_http_listen_set(void *ctx, plm_dlist_t *param_list)
 
 	n = PLM_DLIST_LEN(param_list);
 	http_ctx = (struct plm_http_ctx *)ctx;
-	if (n != 1 && n != 2) {
-		plm_log_syslog("the number of http_listen param is wrong");
+	if (n != 2 && n != 3) {
+		plm_log_syslog("the number of http_listen's param is wrong");
 		return (-1);
 	}
 
@@ -147,11 +132,57 @@ int plm_http_listen_set(void *ctx, plm_dlist_t *param_list)
 		return (-1);
 	}
 
-	if (n == 2) {
+	param = (struct plm_cmd_param *)PLM_DLIST_NEXT(&param->cp_node);
+	http_ctx->hc_port = plm_str2s(&param->cp_data);
+
+	if (n == 3) {
 		param = (struct plm_cmd_param *)PLM_DLIST_NEXT(&param->cp_node);
 		http_ctx->hc_backlog = plm_str2i(&param->cp_data);
 	}
 
+	return (0);
+}
+
+/* http_backend 192.168.1.102 80 */
+int plm_http_backend_set(void *ctx, plm_dlist_t *param_list)
+{
+	int n;
+	unsigned short port;
+	struct plm_http_ctx *http_ctx;
+	struct plm_cmd_param *param;
+	struct plm_http_backend *backend, tmp;
+
+	n = PLM_DLIST_LEN(param_list);
+	http_ctx = (struct plm_http_ctx *)ctx;
+	if (n != 3) {
+		plm_log_syslog("the number of http_backend's param is wrong");
+		return (-1);
+	}
+
+	tmp.sin_family = AF_INET;
+	param = (struct plm_cmd_param *)PLM_DLIST_FRONT(param_list);
+	tmp.sin_addr = inet_addr(param->cp_data.s_str);
+	if (tmp.sin_addr == (struct in_addr)-1) {
+		plm_log_syslog("invalid backend address");
+		return (-1);
+	}
+
+	param = (struct plm_cmd_param *)PLM_DLIST_NEXT(param);
+	port = plm_str2s(&param->cp_data);
+	tmp.sin_port = htons(port);
+
+	backend = (struct plm_http_backend *)malloc(sizeof(*backend));
+	if (!backend) {
+		plm_log_syslog("memory allocate failed: %s %d", __FUNCTION__, __LINE__);
+		return (-1);
+	}
+
+	memset(backend, 0, sizeof(*backend));
+	backend->sin_family = tmp.sin_family;
+	backend->sin_addr = tmp.sin_addr;
+	backend->sin_port = tmp.sin_port;
+
+	PLM_LIST_ADD_FRONT(&http_ctx->hc_backends, &backend->hb_node);
 	return (0);
 }
 

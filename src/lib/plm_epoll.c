@@ -160,9 +160,9 @@ int plm_epoll_io_ctl(struct plm_event_io *e, int fd, int flag, plm_poller_t t)
 	ev.data.fd = fd;
 
 	if (flag & PLM_READ)
-		ev.events = EPOLLIN | EPOLLONESHOT;
+		ev.events = EPOLLIN | EPOLLONESHOT | EPOLLET;
 	else if (flag & PLM_WRITE)
-		ev.events = EPOLLOUT | EPOLLONESHOT;
+		ev.events = EPOLLOUT | EPOLLONESHOT | EPOLLET;
 	else
 		abort();
 

@@ -74,10 +74,10 @@ void plm_hash_foreach(struct plm_hash *hash, void *data,
 					  void (*fn)(void *key, void *value, void *data));	
 
 /* destroy hash and free the bucket */
-#define plm_hash_destroy(hash)					\
-	do {										\
+#define plm_hash_destroy(hash)								\
+	do {													\
 		(hash)->h_free((hash)->h_bucket, (hash)->h_data);	\
-		(hash)->h_len = 0;						\
+		(hash)->h_len = 0;									\
 	} while (0)
 
 #ifdef __cplusplus

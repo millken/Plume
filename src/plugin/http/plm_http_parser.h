@@ -23,87 +23,82 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _PLM_HTTP_PROTO_H
-#define _PLM_HTTP_PROTO_H
+#ifndef _PLM_HTTP_PARSER_H
+#define _PLM_HTTP_PARSER_H
 
 #include <stdint.h>
 
-#include "plm_hash.h"
 #include "plm_string.h"
-#include "plm_mempool.h"
-#include "plm_list.h"
-#include "plm_http_parser.h"
-#include "plm_http_plugin.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct plm_http_body {
-	void *hb_data;
-	void (*hb_callback)(void *, plm_string_t *);
-};		
+#define PLM_HTTP_PARSE_DONE (0)
+#define PLM_HTTP_PARSE_AGAIN (1)
+#define PLM_HTTP_PARSE_ERROR (-1)
+#define PLM_HTTP_PARSE_BREAK (-2)
 
-struct plm_http_conn {
-	plm_list_t hc_reqs;
-	plm_list_t hc_resps;
-	
-	struct plm_mempool hc_pool;
-	struct plm_comm_close_handler hc_cch;
-	plm_http_parser_t hc_parser;
-	
-	int hc_fd;
-	struct sockaddr_in hc_addr;
+#define PLM_HTTP_VERSION09 "HTTP/0.9"
+#define PLM_HTTP_VERSION10 "HTTP/1.0"
+#define PLM_HTTP_VERSION11 "HTTP/1.1"
 
-	struct plm_http_conn hc_body;
-	
-	struct {
-		char *hc_data;
-		size_t hc_size;
-		size_t hc_offset;
-	} hc_in;
-
-	plm_list_t hc_free_reqs;
-	plm_list_t hc_free_resps;
+enum plm_http_ver {
+	PLM_HTTP_VNONE,
+	PLM_HTTP_09,
+	PLM_HTTP_10,
+	PLM_HTTP_11
 };
 
-struct plm_http_req {
-	plm_list_node_t hr_node;
-
-	enum plm_http_mthd hr_mthd;
-	enum plm_http_ver hr_ver;
-	plm_string_t hr_url;
-	struct plm_hash hr_fields;
-
-	uint64_t hr_cntlen;
-	plm_string_t hr_host;
-	uint16_t hr_port;
-
-	struct plm_http_conn *hr_conn;
-
-	struct {
-		uint8_t hr_keepalive : 1;
-		uint8_t hr_pipeline : 1;
-		uint8_t hr_hdr_kpalv_on : 1;
-	} hr_flags;
+enum plm_http_mthd {
+	PLM_MTHD_NONE,
+	PLM_MTHD_CONNECT,
+	PLM_MTHD_DELETE,
+	PLM_MTHD_GET,
+	PLM_MTHD_HEAD,
+	PLM_MTHD_POST,
+	PLM_MTHD_PUT,
+	PLM_MTHD_OPTIONS,
+	PLM_MTHD_TRACE
 };
 
-struct plm_http_resp {
-	plm_list_node_t hr_node;
+typedef struct plm_http_parser {
+	/* parse state */
+	int hp_state;
+	
+	/* bytes parsed every time */
+	size_t hp_parsed;
 
-	enum plm_http_ver hr_ver;
-	int hr_status;
-	plm_string_t hr_desc;
-	struct plm_hash hr_fields;
+	/* user data */
+	void *hp_data;
 
-	struct plm_http_conn *hr_conn;
-	struct plm_http_req *hr_req;
+	/* return 0 indicate success, else -1 to break parse */
+	
+	int (*hp_on_req_line)(enum plm_http_mthd, const plm_string_t *,
+						  enum plm_http_ver, void *);
+	
+	int (*hp_on_status_line)(enum plm_http_ver, int, plm_string_t *, void *);
 
-	struct {
-		uint8_t hr_keepalive : 1;
-		uint8_t hr_pipeline : 1;
-	} hr_flags;
+	int (*hp_on_field)(const plm_string_t *, const plm_string_t *, void *);
+	
+	void (*hp_on_hdr_done)(void *);
+	
+} plm_http_parser_t;
+
+struct plm_http_url {
+	plm_string_t hu_scheme;
+	plm_string_t hu_host;
+	plm_string_t hu_port;
+	plm_string_t hu_path;
 };
+
+#define plm_http_parser_init(p, v) ((p)->h_state = 0, (p)->hp_data = (v))
+
+int plm_http_parser_req(plm_http_parser_t *parser, plm_string_t *s);
+
+int plm_http_parser_resp(plm_http_parser_t *parser, plm_string_t *s);
+
+int plm_http_parser_url(struct plm_http_url *out, const plm_string_t *url);
 
 #ifdef __cplusplus
 }

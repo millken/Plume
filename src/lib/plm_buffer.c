@@ -72,6 +72,9 @@ char *plm_buffer_alloc(int type)
 	case MEM_1K:
 		size = SIZE_1K;
 		break;
+
+	default:
+		return (NULL);
 	}
 	
 	return plm_lookaside_list_alloc(&mem_list[type], NULL);

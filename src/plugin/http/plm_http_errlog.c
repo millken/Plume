@@ -23,21 +23,7 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _PLM_HTTP_REQUEST_H
-#define _PLM_HTTP_REQUEST_H
+#include "plm_http_errlog.h"
 
-#include "plm_http_plugin.h"
+int plm_http_log_level = PLM_LOG_TRACE;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-int plm_http_open_server(struct plm_http_ctx *ctx);
-
-int plm_http_close_server();
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif

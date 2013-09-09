@@ -131,11 +131,11 @@ void plm_comm_set_flag_added(int fd, char added);
  */
 char plm_comm_get_flag_added(int fd);
 
-/* ignore error
+/* check errno
  * @err -- errno
- * return 1 -- ture, 0 -- false
- */
-int plm_comm_ignore(int err);
+ * return non-zero when errno could be ignored
+ */	
+int plm_comm_ignore(int err);	
 
 #ifdef __cplusplus
 }

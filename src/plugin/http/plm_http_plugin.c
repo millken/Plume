@@ -32,6 +32,7 @@
 #include <sys/un.h>
 
 #include "plm_plugin.h"
+#include "plm_http.h"
 #include "plm_http_request.h"
 #include "plm_http_plugin.h"
 
@@ -97,17 +98,32 @@ void *plm_http_ctx_create(void *parent)
 	if (ctx) {
 		memset(ctx, 0, sizeof(struct plm_http_ctx));
 		ctx->hc_backlog = DEF_BACKLOG;
+
+		PLM_LIST_INIT(&ctx->hc_backends);
 	}
 	return (ctx);
 }
 
-void plm_http_ctx_destroy(void *ctx)
+void plm_http_ctx_destroy(void *data)
 {
 	struct plm_http_ctx *ctx;
+	struct plm_http_backend *bd;
 
 	ctx = (struct plm_http_ctx *)data;
 	if (ctx->hc_addr.s_str)
 		plm_strclear(&ctx->hc_addr);
+
+	/* free all backends */
+	do {
+		if (PLM_LIST_LEN(&ctx->hc_backends) == 0)
+			break;
+
+		bd = (struct plm_http_backend *)PLM_LIST_FRONT(&ctx->hc_backends);
+		PLM_LIST_DEL_FRONT(&ctx->hc_backends);
+		
+		free(bd);
+	} while (1);
+	
 	free(ctx);
 }
 
@@ -150,7 +166,8 @@ int plm_http_backend_set(void *ctx, plm_dlist_t *param_list)
 	unsigned short port;
 	struct plm_http_ctx *http_ctx;
 	struct plm_cmd_param *param;
-	struct plm_http_backend *backend, tmp;
+	struct plm_http_backend *backend;
+	struct sockaddr_in tmp;
 
 	n = PLM_DLIST_LEN(param_list);
 	http_ctx = (struct plm_http_ctx *)ctx;
@@ -160,27 +177,31 @@ int plm_http_backend_set(void *ctx, plm_dlist_t *param_list)
 	}
 
 	tmp.sin_family = AF_INET;
+	
 	param = (struct plm_cmd_param *)PLM_DLIST_FRONT(param_list);
-	tmp.sin_addr = inet_addr(param->cp_data.s_str);
-	if (tmp.sin_addr == (struct in_addr)-1) {
+	
+	if (inet_addr(param->cp_data.s_str) == -1) {
 		plm_log_syslog("invalid backend address");
 		return (-1);
 	}
 
-	param = (struct plm_cmd_param *)PLM_DLIST_NEXT(param);
+	tmp.sin_addr.s_addr = inet_addr(param->cp_data.s_str);
+
+	param = (struct plm_cmd_param *)PLM_DLIST_NEXT(&param->cp_node);
 	port = plm_str2s(&param->cp_data);
 	tmp.sin_port = htons(port);
 
 	backend = (struct plm_http_backend *)malloc(sizeof(*backend));
 	if (!backend) {
-		plm_log_syslog("memory allocate failed: %s %d", __FUNCTION__, __LINE__);
+		plm_log_syslog("memory allocate failed: %s %d",
+					   __FUNCTION__, __LINE__);
 		return (-1);
 	}
 
 	memset(backend, 0, sizeof(*backend));
-	backend->sin_family = tmp.sin_family;
-	backend->sin_addr = tmp.sin_addr;
-	backend->sin_port = tmp.sin_port;
+	backend->hb_addr.sin_family = tmp.sin_family;
+	backend->hb_addr.sin_addr = tmp.sin_addr;
+	backend->hb_addr.sin_port = tmp.sin_port;
 
 	PLM_LIST_ADD_FRONT(&http_ctx->hc_backends, &backend->hb_node);
 	return (0);

@@ -28,15 +28,15 @@
 #include <errno.h>
 
 #include "plm_comm.h"
+#include "plm_hash.h"
 #include "plm_event.h"
 #include "plm_log.h"
+#include "plm_string.h"
 #include "plm_http_errlog.h"
 #include "plm_http_event_io.h"
 #include "plm_buffer.h"
 #include "plm_http.h"
 #include "plm_http_plugin.h"
-#include "plm_http_forward.h"
-#include "plm_http_response.h"
 #include "plm_http_request.h"
 
 static int http_server;
@@ -77,7 +77,7 @@ plm_http_palloc(size_t n, void *data)
 }
 
 static void
-plm_http_pfree(size_t n, void *data) {}
+plm_http_pfree(void *p, void *data) {}
 
 static int
 plm_http_on_reqline(enum plm_http_mthd mthd, const plm_string_t *url,
@@ -87,7 +87,7 @@ plm_http_on_reqline(enum plm_http_mthd mthd, const plm_string_t *url,
 	struct plm_http_conn *c;
 
 	c = (struct plm_http_conn *)data;
-	r = plm_mempool_alloc_type(struct plm_http_req, &c->hc_pool);
+	r = (struct plm_http_req *)plm_mempool_alloc(&c->hc_pool, sizeof(*r));
 	if (r) {
 		memset(r, 0, sizeof(*r));
 		plm_strzassign(&r->hr_url, url->s_str, url->s_len, &c->hc_pool);
@@ -125,16 +125,17 @@ plm_http_on_reqline(enum plm_http_mthd mthd, const plm_string_t *url,
 }
 
 static int
-plm_http_on_field(const plm_string_t *k, const plm_string *v, void *data)
+plm_http_on_field(const plm_string_t *k, const plm_string_t *v, void *data)
 {
 	static plm_string_t cs = plm_string("Connection");
 	static plm_string_t kps = plm_string("keep-alive");
 	static plm_string_t pcs = plm_string("Proxy-Connection");
+	static plm_string_t cl = plm_string("Content-Length");
 
 	struct plm_http_req *r;
 	struct plm_mempool *p;
 	plm_string_t *nk, *nv;
-	struct plm_hash_node_t *node;
+	struct plm_hash_node *node;
 
 	r = (struct plm_http_req *)data;
 	p = &r->hr_conn->hc_pool;
@@ -182,12 +183,14 @@ plm_http_on_field(const plm_string_t *k, const plm_string *v, void *data)
 	nk = nv = NULL;
 	plm_strzalloc(&nk, k->s_str, k->s_len, p);
 	plm_strzalloc(&nv, v->s_str, v->s_len, p);
+
 	if (!nk || !nv) {
 		FATAL("strzalloc failed");
 		return (-1);
 	}
 
-	node = plm_mempool_alloc_type(struct plm_hash_node_t, p);
+	node = (struct plm_hash_node *)plm_mempool_alloc(p, sizeof(*node));
+
 	if (!node) {
 		FATAL("mempool alloc failed");
 		return (-1);
@@ -218,6 +221,38 @@ plm_http_on_hdr_done(void *data)
 	}
 }
 
+static void plm_http_conn_free(void *data)
+{
+	struct plm_http_conn *conn;
+
+	conn = (struct plm_http_conn *)data;
+	if (conn->hc_in.hc_data) {
+		int pt;
+		
+		plm_mempool_destroy(&conn->hc_pool);		
+
+		switch (conn->hc_in.hc_size) {
+		case SIZE_1K:
+			pt = MEM_1K;
+			break;
+		case SIZE_2K:
+			pt = MEM_2K;
+			break;
+		case SIZE_4K:
+			pt = MEM_4K;
+			break;
+		case SIZE_8K:
+			pt = MEM_8K;
+			break;
+		default:
+			FATAL("unknown buffer type");
+			break;
+		}
+		
+		plm_buffer_free(pt, conn->hc_in.hc_data);
+	}
+}
+
 static struct plm_http_conn *
 plm_http_conn_alloc(struct plm_http_ctx *ctx)
 {
@@ -227,8 +262,8 @@ plm_http_conn_alloc(struct plm_http_ctx *ctx)
 		plm_lookaside_list_alloc(&ctx->hc_conn_pool, NULL);
 	if (conn) {
 		memset(conn, 0, sizeof(*conn));
-		conn->hc_in.hc_buf = plm_buffer_alloc(MEM_1K);
-		if (conn->hc_in.hc_buf) {
+		conn->hc_in.hc_data = plm_buffer_alloc(MEM_1K);
+		if (conn->hc_in.hc_data) {
 			conn->hc_in.hc_size = SIZE_1K;
 
 			plm_mempool_init(&conn->hc_pool, 512, malloc, free);
@@ -254,38 +289,6 @@ plm_http_conn_alloc(struct plm_http_ctx *ctx)
 	}
 	
 	return (conn);
-}
-
-static void plm_http_conn_free(void *data)
-{
-	struct plm_http_conn *conn;
-
-	conn = (struct plm_http_conn *)data;
-	if (conn->hc_in.hc_buf) {
-		int pt;
-		
-		plm_mempool_destroy(&conn->hc_pool);		
-
-		switch (conn->hc_in.hc_size) {
-		case SIZE_1K:
-			pt = MEM_1K;
-			break;
-		case SIZE_2K:
-			pt = MEM_2K;
-			break;
-		case SIZE_4K:
-			pt = MEM_4K;
-			break;
-		case SIZE_8K:
-			pt = MEM_8K;
-			break;
-		default:
-			FATAL("unknown buffer type");
-			break;
-		}
-		
-		plm_buffer_free(pt, conn->hc_buf);
-	}
 }
 
 void plm_http_accept(void *data, int fd)
@@ -344,7 +347,7 @@ void plm_http_read_req(void *data, int fd)
 	conn = (struct plm_http_conn *)data;
 	off = conn->hc_in.hc_offset;
 	size = conn->hc_in.hc_size;
-	buf = conn->hc_in.hc_buf;
+	buf = conn->hc_in.hc_data;
 
 	n = plm_comm_read(fd, buf + off, size - off);
 	if (n < 0) {
@@ -366,7 +369,7 @@ void plm_http_read_req(void *data, int fd)
 	s.s_str = buf;
 	s.s_len = n;
 
-	if (conn->hc_body) {
+	if (conn->hc_body.hb_callback) {
 		conn->hc_body.hb_callback(conn->hc_body.hb_data, &s);
 		return;
 	}
@@ -391,7 +394,7 @@ void plm_http_read_req(void *data, int fd)
 	PLM_EVT_DRV_READ(fd, data, plm_http_read_req);
 }
 
-int plm_http_open_server(struct plm_http_ctx *ctx);
+int plm_http_open_server(struct plm_http_ctx *ctx)
 {
 	int err = -1;
 	int port = ctx->hc_port;

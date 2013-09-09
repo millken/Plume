@@ -32,6 +32,7 @@
 #include "plm_string.h"
 #include "plm_mempool.h"
 #include "plm_list.h"
+#include "plm_comm.h"
 #include "plm_http_parser.h"
 #include "plm_http_plugin.h"
 
@@ -55,7 +56,7 @@ struct plm_http_conn {
 	int hc_fd;
 	struct sockaddr_in hc_addr;
 
-	struct plm_http_conn hc_body;
+	struct plm_http_body hc_body;
 	
 	struct {
 		char *hc_data;

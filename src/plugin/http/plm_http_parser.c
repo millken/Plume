@@ -42,11 +42,10 @@ static int
 plm_http_parser_req_line(plm_http_parser_t *psr, plm_string_t *s)
 {
 	enum plm_http_mthd mthd = PLM_MTHD_NONE;
-	const char *str = s->s_str, *lf;
+	char *str = s->s_str, *lf, *p;
 	size_t len = s->s_len, i;
 	plm_string_t url, verstr;
 	enum plm_http_ver ver = PLM_HTTP_VNONE;
-	char *p;
 
 	for (i = 0; i < len && str[i] == ' '; i++) /* none */;
 
@@ -128,7 +127,7 @@ plm_http_parser_req_line(plm_http_parser_t *psr, plm_string_t *s)
 		return (PLM_HTTP_PARSE_ERROR);
 
 	do {
-		const char *maj, *min;
+		char *maj, *min;
 		int v1, v2;
 
 		min = maj = verstr.s_str + 5;
@@ -244,7 +243,7 @@ plm_http_parser_field(plm_http_parser_t *psr, plm_string_t *s)
 static int
 plm_http_parser_status_line(plm_http_parser_t *psr, plm_string_t *s)
 {
-	const char *str = s->s_str, *lf;
+	char *str = s->s_str, *lf, *p;
 	size_t len = s->s_len, i;
 	plm_string_t verstr, desc;
 	enum plm_http_ver ver = PLM_HTTP_VNONE;
@@ -282,7 +281,7 @@ plm_http_parser_status_line(plm_http_parser_t *psr, plm_string_t *s)
 		return (PLM_HTTP_PARSE_ERROR);
 
 	do {
-		const char *maj, *min;
+		char *maj, *min;
 		int v1, v2;
 
 		min = maj = verstr.s_str + 5;
@@ -335,7 +334,7 @@ plm_http_parser_status_line(plm_http_parser_t *psr, plm_string_t *s)
 	s->s_str += psr->hp_parsed;
 	s->s_len -= psr->hp_parsed;
 	
-	assert(psr->hp_on_resp_line);
+	assert(psr->hp_on_status_line);
 	psr->hp_state = PLM_PRS_SL_DONE;
 	return (psr->hp_on_status_line(ver, code, &desc, psr->hp_data) ?
 			PLM_HTTP_PARSE_BREAK : PLM_HTTP_PARSE_DONE);
@@ -362,7 +361,7 @@ RETRY:
 	case PLM_PRS_RL_CR:
 		psr->hp_parsed++;		
 		if (s->s_str[0] == '\n') {
-			psr->hp_sate = PLM_PRS_RL_DONE;
+			psr->hp_state = PLM_PRS_RL_DONE;
 			s->s_str++;
 			s->s_len--;
 			if (s->s_len > 0)
@@ -410,7 +409,7 @@ int plm_http_parser_resp(plm_http_parser_t *psr, plm_string_t *s)
 
 RETRY:
 	switch (psr->hp_state) {
-	case PLM_PRS_DONE:
+	case PLM_PRS_NONE:
 		rc = plm_http_parser_status_line(psr, s);
 		if (PLM_HTTP_PARSE_DONE == rc) {
 			if (s->s_len > 0)
@@ -423,7 +422,7 @@ RETRY:
 	case PLM_PRS_SL_CR:
 		psr->hp_parsed++;
 		if (s->s_str[0] == '\n') {
-			psr->hp_sate = PLM_PRS_SL_DONE;
+			psr->hp_state = PLM_PRS_SL_DONE;
 			s->s_str++;
 			s->s_len--;
 			if (s->s_len > 0)
@@ -467,7 +466,7 @@ int plm_http_parser_url(struct plm_http_url *out, const plm_string_t *url)
 {
 	int state;
 	size_t len;
-	const char *p1, *p2;
+	char *p1, *p2;
 
 	enum plm_url_state {
 		PLM_URL_NONE,

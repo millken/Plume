@@ -26,26 +26,29 @@
 #ifndef _PLM_HTTP_ERRLOG_H
 #define _PLM_HTTP_ERRLOG_H
 
+#include <stdarg.h>
 #include "plm_log.h"
 
 #ifdef __cplusplus
+extern "C" {
 #endif
 
 extern int plm_http_log_level;
 
-#define DEBUG(fmt, ...)						 \
-	if (plm_http_log_level >= PLM_LOG_DEBUG) \
-		plm_log_write(PLM_LOG_DEBUG, "%s: "fmt, __FUNCTION__, __VA_ARGS__)
+#define DEBUG(fmt, args...)						\
+	if (plm_http_log_level >= PLM_LOG_DEBUG)	\
+		plm_log_write(PLM_LOG_DEBUG, "%s: "fmt, __FUNCTION__, ##args)
 
-#define TRACE(fmt, ...)						 \
-	if (plm_http_log_level >= PLM_LOG_TRACE) \
-		plm_log_write(PLM_LOG_TRACE, "%s: "fmt, __FUNCTION__, __VA_ARGS__)
+#define TRACE(fmt, args...)						\
+	if (plm_http_log_level >= PLM_LOG_TRACE)	\
+		plm_log_write(PLM_LOG_TRACE, "%s: "fmt, __FUNCTION__, ##args)
 
-#define FATAL(fmt, ...)						 \
-	if (plm_http_log_level >= PLM_LOG_FATAL) \
-		plm_log_write(PLM_LOG_FATAL, "%s: "fmt, __FUNCTION__, __VA_ARGS__)
+#define FATAL(fmt, args...)						\
+	if (plm_http_log_level >= PLM_LOG_FATAL)	\
+		plm_log_write(PLM_LOG_FATAL, "%s: "fmt, __FUNCTION__, ##args)
 
 #ifdef __cplusplus
+}
 #endif
 
 #endif

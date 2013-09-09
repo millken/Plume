@@ -27,7 +27,7 @@
 #include <string.h>
 #include "plm_string.h"
 
-int plm_strdup(plm_string_t *out, plm_string_t *in)
+int plm_strdup(plm_string_t *out, const plm_string_t *in)
 {
 	int rc = -1;
 	
@@ -41,7 +41,7 @@ int plm_strdup(plm_string_t *out, plm_string_t *in)
 	return (rc);
 }
 
-int plm_strcmp(plm_string_t *s1, plm_string_t *s2)
+int plm_strcmp(const plm_string_t *s1, const plm_string_t *s2)
 {
 	int rc;
 
@@ -59,7 +59,7 @@ int plm_strcmp(plm_string_t *s1, plm_string_t *s2)
 
 static int plm_casecmp(const char *s1, const char *s2, size_t len)
 {
-	static int dv1 = 'a' - 'A';
+	static int dv = 'a' - 'A';
 
 #define ISCHAR(c) (c <= 'z' && c >= 'A')	
 
@@ -77,7 +77,7 @@ static int plm_casecmp(const char *s1, const char *s2, size_t len)
 	return (i == len ? 0 : s1[i] - s2[i]);
 }
 
-int plm_strcasecmp(plm_string_t *s1, plm_string_t *s2)
+int plm_strcasecmp(const plm_string_t *s1, const plm_string_t *s2)
 {
 	int rc;
 	
@@ -124,7 +124,7 @@ int plm_strcat2(plm_string_t *out, const plm_string_t *dup,
 	}											\
 	if (sign == -1) value *= -1;
 
-char plm_str2c(plm_string_t *str)
+char plm_str2c(const plm_string_t *str)
 {
 	char value = 0;
 	int len = str->s_len, i;
@@ -134,7 +134,7 @@ char plm_str2c(plm_string_t *str)
 	return (value);
 }
 
-short plm_str2s(plm_string_t *str)
+short plm_str2s(const plm_string_t *str)
 {
 	short value = 0;
 	int len = str->s_len, i;
@@ -144,7 +144,7 @@ short plm_str2s(plm_string_t *str)
 	return (value);	
 }
 
-int plm_str2i(plm_string_t *str)
+int plm_str2i(const plm_string_t *str)
 {
 	int value = 0;
 	int len = str->s_len, i;
@@ -154,7 +154,7 @@ int plm_str2i(plm_string_t *str)
 	return (value);	
 }
 
-long plm_str2l(plm_string_t *str)
+long plm_str2l(const plm_string_t *str)
 {
 	long value = 0;
 	int len = str->s_len, i;
@@ -164,7 +164,7 @@ long plm_str2l(plm_string_t *str)
 	return (value);		
 }
 
-long long plm_str2ll(plm_string_t *str)
+long long plm_str2ll(const plm_string_t *str)
 {
 	long long value = 0;
 	int len = str->s_len, i;

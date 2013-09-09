@@ -149,17 +149,17 @@ typedef struct plm_string {
 		} \
 	} while (0)	
 
-int plm_strdup(plm_string_t *out, plm_string_t *in);
-int plm_strcmp(plm_string_t *s1, plm_string_t *s2);
-int plm_strcasecmp(plm_string_t *s1, plm_string_t *s2);	
+int plm_strdup(plm_string_t *out, const plm_string_t *in);
+int plm_strcmp(const plm_string_t *s1, const plm_string_t *s2);
+int plm_strcasecmp(const plm_string_t *s1, const plm_string_t *s2);	
 int plm_strcat2(plm_string_t *out, const plm_string_t *dup,
 				const plm_string_t *cat);
 	
-char plm_str2c(plm_string_t *str);
-short plm_str2s(plm_string_t *str);
-int plm_str2i(plm_string_t *str);
-long plm_str2l(plm_string_t *str);
-long long plm_str2ll(plm_string_t *str);
+char plm_str2c(const plm_string_t *str);
+short plm_str2s(const plm_string_t *str);
+int plm_str2i(const plm_string_t *str);
+long plm_str2l(const plm_string_t *str);
+long long plm_str2ll(const plm_string_t *str);
 
 #ifdef __cplusplus
 }

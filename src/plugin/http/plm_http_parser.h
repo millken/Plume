@@ -92,7 +92,7 @@ struct plm_http_url {
 	plm_string_t hu_path;
 };
 
-#define plm_http_parser_init(p, v) ((p)->h_state = 0, (p)->hp_data = (v))
+#define plm_http_parser_init(p, v) ((p)->hp_state = 0, (p)->hp_data = (v))
 
 int plm_http_parser_req(plm_http_parser_t *parser, plm_string_t *s);
 

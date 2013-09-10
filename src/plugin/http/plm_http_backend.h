@@ -23,54 +23,19 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _PLM_LOCK_H
-#define _PLM_LOCK_H
+#ifndef _PLM_HTTP_BACKEND
+#define _PLM_HTTP_BACKEND
 
-#include <stdint.h>
-#include <pthread.h>
+#include "plm_http.h"
+#include "plm_http_plugin.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef pthread_mutex_t plm_lock_t;
+int plm_http_backend_select(struct plm_http_req *r);
 
-typedef struct plm_event {
-	pthread_mutex_t e_mutex;
-	pthread_cond_t e_cond;
-	uint8_t e_signaled;
-} plm_event_t;
-
-#define plm_lock_init(lock) pthread_mutex_init((lock), NULL)
-#define plm_lock_destroy(lock) pthread_mutex_destroy((lock))
-#define plm_lock_lock(lock) pthread_mutex_lock((lock))
-#define plm_lock_trylock(lock) pthread_mutex_trylock((lock))
-#define plm_lock_unlock(lock) pthread_mutex_unlock((lock))
-
-/* init an event, event use to wake up 
- * thread which sleep to wait for this event
- * @event -- event object
- * return 0 -- success, else error
- */
-int plm_event_init(plm_event_t *event);
-
-/* destroy event object
- * @event -- event object
- * return 0 -- success, else error
- */
-int plm_event_destroy(plm_event_t *event);
-
-/* owner or wait for event object
- * @event -- event object
- * return 0 -- success, else error
- */
-int plm_event_wait(plm_event_t *event);
-
-/* singal event object, wake up sleep threads
- * @event -- event object
- * return 0 -- success, else error
- */
-int plm_event_singal(plm_event_t *event);
+int plm_http_backend_forward(struct plm_http_req *r);
 
 #ifdef __cplusplus
 }

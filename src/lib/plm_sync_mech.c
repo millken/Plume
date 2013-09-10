@@ -36,8 +36,10 @@ int plm_event_init(plm_event_t *event)
 {
 	int err = -1;
 
-	if (!pthread_mutex_init(&event->e_mutex, NULL))
+	if (!pthread_mutex_init(&event->e_mutex, NULL)) {
 		err = pthread_cond_init(&event->e_cond, NULL);
+		event->e_signaled = 0;
+	}
 
 	return (err);
 }
@@ -65,7 +67,8 @@ int plm_event_wait(plm_event_t *event)
 	int err = -1;
 
 	if (!pthread_mutex_lock(&event->e_mutex)) {
-		err = pthread_cond_wait(&event->e_cond, &event->e_mutex);
+		while (!event->e_signaled)
+			err = pthread_cond_wait(&event->e_cond, &event->e_mutex);
 		pthread_mutex_unlock(&event->e_mutex);
 	}
 
@@ -81,6 +84,7 @@ int plm_event_singal(plm_event_t *event)
 	int err = -1;
 
 	if (!pthread_mutex_lock(&event->e_mutex)) {
+		event->e_signaled = 1;
 		err = pthread_cond_signal(&event->e_cond);
 		pthread_mutex_unlock(&event->e_mutex);
 	}

@@ -74,6 +74,8 @@ struct plm_http_conn {
 		uint8_t hc_eof : 1;
 		uint8_t hc_badreq : 1;
 	} hc_flags;
+
+	struct plm_http_ctx *hc_ctx;
 };
 
 struct plm_http_req {
@@ -89,6 +91,7 @@ struct plm_http_req {
 	uint16_t hr_port;
 
 	struct plm_http_conn *hr_conn;
+	struct sockaddr_in *hr_backend;
 
 	struct {
 		uint8_t hr_keepalive : 1;

@@ -264,6 +264,7 @@ plm_http_conn_alloc(struct plm_http_ctx *ctx)
 		memset(conn, 0, sizeof(*conn));
 		conn->hc_in.hc_data = plm_buffer_alloc(MEM_1K);
 		if (conn->hc_in.hc_data) {
+			conn->hc_ctx = ctx;
 			conn->hc_in.hc_size = SIZE_1K;
 
 			plm_mempool_init(&conn->hc_pool, 512, malloc, free);
@@ -332,29 +333,62 @@ void plm_http_accept(void *data, int fd)
 	}   
 }
 
-static void plm_http_req_process(struct plm_http_req *r)
-{}
-
 static void
 plm_http_schedule_reply_done(void *data, char *buf, size_t n, int state)
-{}
+{
+}
 
-static void plm_http_schedule_reply(struct plm_http_conn *c)
+static void
+plm_http_schedule_reply(struct plm_http_conn *c, int err)
 {
 	static plm_string_t badreq = plm_string("");
+	static plm_string_t errfwd = plm_string("");
+	static plm_string_t nobackend = plm_string("");
+
+	if (err == PLM_ERR_BACKEND_SELECT)
+		c->hc_flags.hc_nobackend = 1;
+	else if (err == PLM_ERR_BACKEND_FWD)
+		c->hc_flags.hc_errfwd = 1;
+	else if (err == PLM_ERR_BADREQ)
+		c->hc_flags.hc_badreq = 1;
 	
 	if (PLM_LIST_LEN(&c->hc_resps) > 0)
 		return;
 
+	c->hc_wrevt.hw_fn = plm_http_schedule_reply_done;
+	c->hc_wrevt.hw_data = c;
+	c->hc_wrevt.hw_off = 0;
+	
 	if (c->hc_flags.hc_badreq) {
-		c->hc_wrevt.hw_fn = plm_http_schedule_reply_done;
-		c->hc_wrevt.hw_data = c;
 		c->hc_wrevt.hw_buf = badreq.s_str;
 		c->hc_wrevt.hw_len = badreq.s_len;
-		c->hc_wrevt.hw_off = 0;
-
-		return plm_http_event_write(c->hc_fd, &c->hc_wrevt);
+	} else if (c->hc_flags.hc_errfwd) {
+		c->hc_wrevt.hw_buf = errfwd.s_str;
+		c->hc_wrevt.hw_len = errfwd.s_len;		
+	} else if (c->hc_flags.hc_nobackend) {
+		c->hc_wrevt.hw_buf = nobackend.s_str;
+		c->hc_wrevt.hw_len = nobackend.s_len;				
 	}
+		
+	return plm_http_event_write(c->hc_fd, &c->hc_wrevt);
+}
+
+static void
+plm_http_req_process(struct plm_http_req *r)
+{
+	struct plm_http_conn *c;
+	int et = PLM_ERR_BACKEND_SELECT;
+
+	c = r->hr_conn;
+	if (plm_http_backend_select(r)) {
+		if (plm_http_backend_forward(r))
+			return;
+
+		et = PLM_ERR_BACKEND_FWD;
+	}
+
+	shutdown(c->hc_fd, SHUT_RD);
+	plm_http_schedule_reply(c, et);
 }
 
 void plm_http_read_req(void *data, int fd)
@@ -402,9 +436,8 @@ void plm_http_read_req(void *data, int fd)
 	rc = plm_http_parser_req(&conn->hc_parser, &s);
 	if (rc == PLM_HTTP_PARSE_ERROR) {
 		PLM_TRACE("bad request");
-		conn->hc_flags.hc_badreq = 1;
 		shutdown(fd, SHUT_RD);
-		plm_http_schedule_reply(conn);
+		plm_http_schedule_reply(conn, PLM_ERR_BADREQ);
 		return;
 	}
 

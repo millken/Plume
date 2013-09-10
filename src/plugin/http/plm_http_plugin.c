@@ -175,6 +175,7 @@ int plm_http_backend_set(void *ctx, plm_dlist_t *param_list)
 	struct plm_cmd_param *param;
 	struct plm_http_backend *backend;
 	struct sockaddr_in tmp;
+	plm_string_t ip;
 
 	n = PLM_DLIST_LEN(param_list);
 	http_ctx = (struct plm_http_ctx *)ctx;
@@ -186,13 +187,16 @@ int plm_http_backend_set(void *ctx, plm_dlist_t *param_list)
 	tmp.sin_family = AF_INET;
 	
 	param = (struct plm_cmd_param *)PLM_DLIST_FRONT(param_list);
+	plm_strzdup(&ip, &param->cp_data);
 	
-	if (inet_addr(param->cp_data.s_str) == -1) {
+	if (inet_addr(ip.s_str) == -1) {
+		plm_strclear(&ip);
 		plm_log_syslog("invalid backend address");
 		return (-1);
 	}
 
-	tmp.sin_addr.s_addr = inet_addr(param->cp_data.s_str);
+	tmp.sin_addr.s_addr = inet_addr(ip.s_str);
+	plm_strclear(&ip);
 
 	param = (struct plm_cmd_param *)PLM_DLIST_NEXT(&param->cp_node);
 	port = plm_str2s(&param->cp_data);

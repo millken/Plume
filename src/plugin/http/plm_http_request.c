@@ -37,6 +37,7 @@
 #include "plm_buffer.h"
 #include "plm_http.h"
 #include "plm_http_plugin.h"
+#include "plm_http_backend.h"
 #include "plm_http_request.h"
 
 static int http_server;
@@ -460,6 +461,11 @@ int plm_http_open_server(struct plm_http_ctx *ctx)
 	int port = ctx->hc_port;
 	int backlog = ctx->hc_backlog;
 	const char *ip = ctx->hc_addr.s_str;
+
+	if (plm_http_backend_init(ctx)) {
+		plm_log_syslog("backend init failed");
+		return (err);
+	}
 	
 	http_server = plm_comm_open(PLM_COMM_TCP, NULL, 0, 0, port, ip,
 								backlog, 1, 1);
@@ -483,6 +489,7 @@ int plm_http_close_server()
 		http_server = -1;
 	}
 
+	plm_http_backend_destroy();
 	return (err);
 }
 

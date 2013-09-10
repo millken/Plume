@@ -33,6 +33,10 @@
 extern "C" {
 #endif
 
+int plm_http_backend_init(struct plm_http_ctx *c);
+
+int plm_http_backend_destroy();	
+
 int plm_http_backend_select(struct plm_http_req *r);
 
 int plm_http_backend_forward(struct plm_http_req *r);
